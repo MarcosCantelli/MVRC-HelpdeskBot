@@ -13,8 +13,8 @@ pipeline {
         VM_USER      = 'mvrc'
         SSH_KEY      = '/var/lib/jenkins/.ssh/ansible_key'
 
-        IMAGE_API    = 'helpdesk-api'
-        IMAGE_BOT    = 'helpdesk-bot'
+        DOCKER_IMAGE_API = 'mrhightech/helpdesk-api'
+        DOCKER_IMAGE_BOT = 'mrhightech/helpdesk-bot'
     }
 
     stages {
@@ -63,43 +63,49 @@ pipeline {
             }
         }
 
-        // 🔥 Build separado (API + BOT)
-        stage('Build Docker Images') {
+        // 🚀 MULTI-ARCH BUILD + PUSH
+        stage('Build & Push Multi-Arch') {
             steps {
-                sh """
-                    docker build -f Dockerfile.api -t ${IMAGE_API}:${BUILD_NUMBER} -t ${IMAGE_API}:latest .
-                    docker build -f Dockerfile.bot -t ${IMAGE_BOT}:${BUILD_NUMBER} -t ${IMAGE_BOT}:latest .
-                """
-                echo "Imagens criadas: API e BOT"
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        docker buildx create --use || true
+                        docker buildx inspect --bootstrap
+
+                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+
+                        docker buildx build \
+                            --platform linux/amd64,linux/arm64 \
+                            -f Dockerfile.api \
+                            -t \$DOCKER_USER/helpdesk-api:latest \
+                            --push .
+
+                        docker buildx build \
+                            --platform linux/amd64,linux/arm64 \
+                            -f Dockerfile.bot \
+                            -t \$DOCKER_USER/helpdesk-bot:latest \
+                            --push .
+                    """
+                }
             }
         }
 
-        // 📦 Empacotar imagens
-        stage('Package Images') {
-            steps {
-                sh """
-                    docker save ${IMAGE_API}:latest | gzip > /tmp/${IMAGE_API}.tar.gz
-                    docker save ${IMAGE_BOT}:latest | gzip > /tmp/${IMAGE_BOT}.tar.gz
-                """
-            }
-        }
-
-        // 🚀 Deploy remoto
+        // 🚀 DEPLOY REMOTO (PULL)
         stage('Deploy na VM') {
             steps {
                 withCredentials([
                     string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN')
                 ]) {
                     sh """
-                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no /tmp/${IMAGE_API}.tar.gz ${VM_USER}@${VM_IP}:/tmp/
-                        scp -i ${SSH_KEY} -o StrictHostKeyChecking=no /tmp/${IMAGE_BOT}.tar.gz ${VM_USER}@${VM_IP}:/tmp/
-
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${VM_USER}@${VM_IP} '
-                            
-                            docker load < /tmp/${IMAGE_API}.tar.gz
-                            docker load < /tmp/${IMAGE_BOT}.tar.gz
 
                             docker network create helpdesk-net 2>/dev/null || true
+
+                            docker pull ${DOCKER_IMAGE_API}:latest
+                            docker pull ${DOCKER_IMAGE_BOT}:latest
 
                             docker stop helpdesk-api 2>/dev/null || true
                             docker rm helpdesk-api 2>/dev/null || true
@@ -111,24 +117,23 @@ pipeline {
                                 --name helpdesk-api \
                                 --network helpdesk-net \
                                 -p 5000:5000 \
+                                -e DB_HOST=helpdesk-db \
+                                -e DB_PORT=5432 \
+                                -e DB_NAME=helpdesk \
+                                -e DB_USER=helpdesk_user \
+                                -e DB_PASSWORD=strongpassword \
                                 --restart unless-stopped \
-                                ${IMAGE_API}:latest
+                                ${DOCKER_IMAGE_API}:latest
 
                             docker run -d \
                                 --name helpdesk-bot \
                                 --network helpdesk-net \
                                 -e TELEGRAM_TOKEN="${TELEGRAM_TOKEN}" \
                                 --restart unless-stopped \
-                                ${IMAGE_BOT}:latest
+                                ${DOCKER_IMAGE_BOT}:latest
 
                             docker image prune -f
-
-                            rm -f /tmp/${IMAGE_API}.tar.gz
-                            rm -f /tmp/${IMAGE_BOT}.tar.gz
                         '
-
-                        rm -f /tmp/${IMAGE_API}.tar.gz
-                        rm -f /tmp/${IMAGE_BOT}.tar.gz
                     """
                 }
             }
