@@ -9,7 +9,7 @@ pipeline {
     }
 
     environment {
-        VM_IP        = '192.168.31.50'
+        VM_IP        = '192.168.31.229'
         VM_USER      = 'mvrc'
         SSH_KEY      = '/var/lib/jenkins/.ssh/ansible_key'
 

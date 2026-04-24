@@ -2,7 +2,10 @@ from flask import Flask, request, jsonify
 from app.database.db import SessionLocal
 from app.models.ticket import Ticket
 from dotenv import load_dotenv
+from app.database.db import Base, engine
 import os
+
+Base.metadata.create_all(bind=engine)
 
 load_dotenv()
 app = Flask(__name__)

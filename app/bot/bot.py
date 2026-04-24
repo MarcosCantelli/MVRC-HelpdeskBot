@@ -18,7 +18,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     response = requests.post(
-        "http://api:5000/ticket",
+        "http://helpdesk-api:5000/ticket",
         json={"user": user, "description": text}
     )
 
