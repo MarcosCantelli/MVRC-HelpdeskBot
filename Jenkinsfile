@@ -1,3 +1,5 @@
+@Library('shared-lib') _
+
 pipeline {
     agent any
 
@@ -9,7 +11,7 @@ pipeline {
 
         stage('Clone') {
             steps {
-                git 'https://github.com/seu-usuario/seu-repo.git'
+                git 'https://github.com/MarcosCantelli/MVRC-HelpdeskBot.git'
             }
         }
 
