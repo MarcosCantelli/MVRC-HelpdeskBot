@@ -75,7 +75,7 @@ pipeline {
                         docker buildx create --use || true
                         docker buildx inspect --bootstrap
 
-                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER
 
                         docker buildx build \
                             --platform linux/amd64,linux/arm64 \
