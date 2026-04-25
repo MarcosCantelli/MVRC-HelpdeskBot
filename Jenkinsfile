@@ -63,7 +63,7 @@ pipeline {
             }
         }
 
-        // 🚀 MULTI-ARCH BUILD + PUSH
+        // 🚀 BUILD MULTI-ARCH + PUSH
         stage('Build & Push Multi-Arch') {
             steps {
                 withCredentials([usernamePassword(
@@ -71,29 +71,36 @@ pipeline {
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    sh """
+                    sh '''
+                        echo "🔧 Habilitando suporte multi-arch..."
+                        docker run --privileged --rm tonistiigi/binfmt --install all
+
+                        echo "🔧 Criando builder..."
                         docker buildx create --use || true
                         docker buildx inspect --bootstrap
 
-                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER
+                        echo "🔐 Login no Docker Hub..."
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
+                        echo "🐳 Build API..."
                         docker buildx build \
                             --platform linux/amd64,linux/arm64 \
                             -f Dockerfile.api \
-                            -t \$DOCKER_USER/helpdesk-api:latest \
+                            -t $DOCKER_IMAGE_API:latest \
                             --push .
 
+                        echo "🤖 Build BOT..."
                         docker buildx build \
                             --platform linux/amd64,linux/arm64 \
                             -f Dockerfile.bot \
-                            -t \$DOCKER_USER/helpdesk-bot:latest \
+                            -t $DOCKER_IMAGE_BOT:latest \
                             --push .
-                    """
+                    '''
                 }
             }
         }
 
-        // 🚀 DEPLOY REMOTO (PULL)
+        // 🚀 DEPLOY NA VM (PULL DAS IMAGENS)
         stage('Deploy na VM') {
             steps {
                 withCredentials([
@@ -102,17 +109,21 @@ pipeline {
                     sh """
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${VM_USER}@${VM_IP} '
 
+                            echo "📦 Criando network..."
                             docker network create helpdesk-net 2>/dev/null || true
 
+                            echo "⬇️ Baixando imagens..."
                             docker pull ${DOCKER_IMAGE_API}:latest
                             docker pull ${DOCKER_IMAGE_BOT}:latest
 
+                            echo "🛑 Parando containers antigos..."
                             docker stop helpdesk-api 2>/dev/null || true
                             docker rm helpdesk-api 2>/dev/null || true
 
                             docker stop helpdesk-bot 2>/dev/null || true
                             docker rm helpdesk-bot 2>/dev/null || true
 
+                            echo "🚀 Subindo API..."
                             docker run -d \
                                 --name helpdesk-api \
                                 --network helpdesk-net \
@@ -125,6 +136,7 @@ pipeline {
                                 --restart unless-stopped \
                                 ${DOCKER_IMAGE_API}:latest
 
+                            echo "🤖 Subindo BOT..."
                             docker run -d \
                                 --name helpdesk-bot \
                                 --network helpdesk-net \
@@ -132,6 +144,7 @@ pipeline {
                                 --restart unless-stopped \
                                 ${DOCKER_IMAGE_BOT}:latest
 
+                            echo "🧹 Limpando imagens antigas..."
                             docker image prune -f
                         '
                     """
@@ -139,16 +152,16 @@ pipeline {
             }
         }
 
-        // 🧪 Healthcheck
+        // 🧪 HEALTHCHECK
         stage('Verificar API') {
             steps {
                 sh """
-                    echo "Aguardando API subir..."
-                    sleep 15
+                    echo "⏳ Aguardando API subir..."
+                    sleep 20
 
                     curl -sf http://${VM_IP}:5000/ticket \
-                        && echo "API OK" \
-                        || echo "API não respondeu"
+                        && echo "✅ API OK" \
+                        || echo "❌ API não respondeu"
                 """
             }
         }
