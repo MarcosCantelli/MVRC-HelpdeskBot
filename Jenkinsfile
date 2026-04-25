@@ -84,14 +84,14 @@ pipeline {
 
                         echo "🐳 Build API..."
                         docker buildx build \
-                            --platform linux/amd64,linux/arm64 \
+                            --platform linux/amd64,linux/arm64,linux/arm/v7 \
                             -f Dockerfile.api \
                             -t $DOCKER_IMAGE_API:latest \
                             --push .
 
                         echo "🤖 Build BOT..."
                         docker buildx build \
-                            --platform linux/amd64,linux/arm64 \
+                            --platform linux/amd64,linux/arm64,linux/arm/v7 \
                             -f Dockerfile.bot \
                             -t $DOCKER_IMAGE_BOT:latest \
                             --push .
