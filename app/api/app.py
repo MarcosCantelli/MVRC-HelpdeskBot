@@ -12,6 +12,12 @@ Base.metadata.create_all(bind=engine)
 app = Flask(__name__)
 
 
+# ✅ Healthcheck (usado pelo teste e monitoramento)
+@app.route("/", methods=["GET"])
+def health():
+    return {"status": "ok"}
+
+
 @app.route("/ticket", methods=["POST"])
 def create_ticket():
     data = request.json
