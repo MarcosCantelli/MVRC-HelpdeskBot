@@ -6,9 +6,9 @@ class Ticket(Base):
     __tablename__ = "tickets"
 
     id = Column(Integer, primary_key=True, index=True)
-    user = Column(String)
-    category = Column(String)       # hardware / software
-    subcategory = Column(String)    # impressora / 3d
-    description = Column(String)
+    user = Column(String, nullable=False)
+    category = Column(String)
+    subcategory = Column(String)
+    description = Column(String, nullable=False)
     ai_suggestion = Column(String)
     status = Column(String, default="aberto")

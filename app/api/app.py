@@ -2,25 +2,27 @@ from flask import Flask, request, jsonify
 from app.database.db import SessionLocal, Base, engine
 from app.models.ticket import Ticket
 from dotenv import load_dotenv
-import os
+from sqlalchemy.exc import SQLAlchemyError
 
 load_dotenv()
 
-# 🔥 Cria tabela automaticamente se não existir
 Base.metadata.create_all(bind=engine)
 
 app = Flask(__name__)
 
 
-# ✅ Healthcheck (usado pelo teste e monitoramento)
 @app.route("/", methods=["GET"])
 def health():
-    return {"status": "ok"}
+    return jsonify({"status": "ok"}), 200
 
 
-@app.route("/ticket", methods=["POST"])
-def create_ticket():
-    data = request.json
+def create_ticket_service(data: dict):
+    if not data:
+        return {"error": "Payload vazio"}, 400
+
+    if not data.get("user") or not data.get("description"):
+        return {"error": "Campos obrigatórios: user, description"}, 400
+
     db = SessionLocal()
 
     try:
@@ -36,14 +38,24 @@ def create_ticket():
         db.commit()
         db.refresh(ticket)
 
-        return jsonify({
+        return {
             "id": ticket.id,
             "status": ticket.status
-        })
+        }, 201
 
-    except Exception as e:
+    except SQLAlchemyError:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return {"error": "Erro no banco"}, 500
 
     finally:
         db.close()
+
+
+@app.route("/ticket", methods=["POST"])
+def create_ticket():
+    if not request.is_json:
+        return jsonify({"error": "JSON inválido"}), 400
+
+    data = request.get_json()
+    response, status = create_ticket_service(data)
+    return jsonify(response), status
