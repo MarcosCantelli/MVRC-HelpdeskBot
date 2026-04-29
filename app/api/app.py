@@ -1,32 +1,41 @@
 from flask import Flask, request, jsonify
+from flask_wtf import CSRFProtect
 from app.database.db import SessionLocal, Base, engine
 from app.models.ticket import Ticket
 from dotenv import load_dotenv
-from sqlalchemy.exc import SQLAlchemyError
-from typing import Optional, Dict, Tuple
+import os
 
 load_dotenv()
 
+# 🔥 Cria tabela automaticamente
 Base.metadata.create_all(bind=engine)
 
 app = Flask(__name__)
 
+# 🔐 IMPORTANTE: chave para CSRF
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
 
+# 🔐 Ativa proteção CSRF
+csrf = CSRFProtect(app)
+
+
+# ✅ Healthcheck
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"}), 200
+    return {"status": "ok"}
 
 
-def create_ticket_service(data: Optional[Dict]) -> Tuple[Dict, int]:
-    if not data:
-        return {"error": "Payload vazio"}, 400
-
-    if not data.get("user") or not data.get("description"):
-        return {"error": "Campos obrigatórios: user, description"}, 400
-
+# ⚠️ API normalmente usa JSON → precisa liberar CSRF aqui
+@csrf.exempt
+@app.route("/ticket", methods=["POST"])
+def create_ticket():
+    data = request.json
     db = SessionLocal()
 
     try:
+        if not data or "user" not in data or "description" not in data:
+            return jsonify({"error": "Dados inválidos"}), 400
+
         ticket = Ticket(
             user=data["user"],
             category=data.get("category"),
@@ -39,24 +48,14 @@ def create_ticket_service(data: Optional[Dict]) -> Tuple[Dict, int]:
         db.commit()
         db.refresh(ticket)
 
-        return {
+        return jsonify({
             "id": ticket.id,
             "status": ticket.status
-        }, 201
+        })
 
-    except SQLAlchemyError:
+    except Exception as e:
         db.rollback()
-        return {"error": "Erro no banco"}, 500
+        return jsonify({"error": str(e)}), 500
 
     finally:
         db.close()
-
-
-@app.route("/ticket", methods=["POST"])
-def create_ticket():
-    if not request.is_json:
-        return jsonify({"error": "JSON inválido"}), 400
-
-    data = request.get_json()
-    response, status = create_ticket_service(data)
-    return jsonify(response), status
