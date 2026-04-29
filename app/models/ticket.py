@@ -11,4 +11,4 @@ class Ticket(Base):
     subcategory = Column(String)
     description = Column(String, nullable=False)
     ai_suggestion = Column(String)
-    status = Column(String, default="aberto")
+    status = Column(String, default="aberto", nullable=False)
