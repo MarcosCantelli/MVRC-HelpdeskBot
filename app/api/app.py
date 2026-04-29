@@ -3,6 +3,7 @@ from flask_wtf import CSRFProtect
 from app.database.db import SessionLocal, Base, engine
 from app.models.ticket import Ticket
 from dotenv import load_dotenv
+from typing import Optional, Dict, Any
 import os
 
 load_dotenv()
@@ -12,37 +13,57 @@ Base.metadata.create_all(bind=engine)
 
 app = Flask(__name__)
 
-# 🔐 IMPORTANTE: chave para CSRF
+# 🔐 SECRET KEY (obrigatório para CSRF)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
 
-# 🔐 Ativa proteção CSRF
+# 🧪 Ambiente de teste → desativa CSRF
+if os.getenv("TEST_ENV") == "true":
+    app.config["WTF_CSRF_ENABLED"] = False
+
+# 🔐 Ativa CSRF
 csrf = CSRFProtect(app)
 
 
+# =========================
+# 🧠 SERVICE LAYER (Sonar gosta disso)
+# =========================
+def create_ticket_service(data: Dict[str, Any]) -> Ticket:
+    if not isinstance(data, dict):
+        raise ValueError("Payload deve ser um JSON válido")
+
+    if "user" not in data or "description" not in data:
+        raise ValueError("Campos obrigatórios: user, description")
+
+    ticket = Ticket(
+        user=str(data["user"]),
+        category=data.get("category"),
+        subcategory=data.get("subcategory"),
+        description=str(data["description"]),
+        ai_suggestion=data.get("ai_suggestion"),
+    )
+
+    return ticket
+
+
+# =========================
 # ✅ Healthcheck
+# =========================
 @app.route("/", methods=["GET"])
 def health():
     return {"status": "ok"}
 
 
-# ⚠️ API normalmente usa JSON → precisa liberar CSRF aqui
-@csrf.exempt
+# =========================
+# 🎟️ Criar Ticket
+# =========================
+@csrf.exempt  # API JSON não usa CSRF token
 @app.route("/ticket", methods=["POST"])
 def create_ticket():
-    data = request.json
+    data: Optional[Dict[str, Any]] = request.get_json()
     db = SessionLocal()
 
     try:
-        if not data or "user" not in data or "description" not in data:
-            return jsonify({"error": "Dados inválidos"}), 400
-
-        ticket = Ticket(
-            user=data["user"],
-            category=data.get("category"),
-            subcategory=data.get("subcategory"),
-            description=data["description"],
-            ai_suggestion=data.get("ai_suggestion")
-        )
+        ticket = create_ticket_service(data)
 
         db.add(ticket)
         db.commit()
@@ -51,11 +72,14 @@ def create_ticket():
         return jsonify({
             "id": ticket.id,
             "status": ticket.status
-        })
+        }), 200
+
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
 
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Erro interno"}), 500
 
     finally:
         db.close()
