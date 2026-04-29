@@ -1,6 +1,7 @@
 from app.api.app import app
 
-def test_create_ticket():
+
+def test_create_ticket_full():
     client = app.test_client()
 
     response = client.post("/ticket", json={
@@ -11,7 +12,7 @@ def test_create_ticket():
         "ai_suggestion": "reiniciar"
     })
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.get_json()
 
     assert "id" in data
