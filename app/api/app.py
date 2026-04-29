@@ -6,7 +6,10 @@ import os
 from typing import Dict, Any, Tuple
 
 load_dotenv()
+from app.database.db import Base, engine
 
+Base.metadata.drop_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 # 🔥 Cria tabela automaticamente
 Base.metadata.create_all(bind=engine)
 
