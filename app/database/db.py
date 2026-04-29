@@ -8,7 +8,7 @@ load_dotenv()
 TEST_ENV = os.getenv("TEST_ENV") == "true"
 
 if TEST_ENV:
-    DATABASE_URL = "sqlite:///./test.db"
+    DATABASE_URL = "sqlite:///:memory:"
 else:
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
 

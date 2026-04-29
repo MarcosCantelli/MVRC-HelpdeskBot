@@ -3,9 +3,13 @@
 pipeline {
     agent any
 
+    options {
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
     triggers {
         githubPush()
-        pollSCM('H/2 * * * *')
+        pollSCM('H/5 * * * *')
     }
 
     environment {
@@ -22,12 +26,6 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-                script {
-                    def branchName = env.GIT_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-                    def commitId = env.GIT_COMMIT ?: sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                    echo "Branch: ${branchName}"
-                    echo "Commit: ${commitId}"
-                }
             }
         }
 
@@ -39,7 +37,7 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build & Test') {
             steps {
                 script {
                     devopsPipeline.buildProject()
@@ -63,8 +61,7 @@ pipeline {
             }
         }
 
-        // 🚀 BUILD MULTI-ARCH + PUSH
-        stage('Build & Push Multi-Arch') {
+        stage('Build & Push Docker') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-creds',
@@ -72,36 +69,19 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                        echo "🔧 Habilitando suporte multi-arch..."
-                        docker run --privileged --rm tonistiigi/binfmt --install all
-
-                        echo "🔧 Criando builder..."
-                        docker buildx create --use || true
-                        docker buildx inspect --bootstrap
-
-                        echo "🔐 Login no Docker Hub..."
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-                        echo "🐳 Build API..."
-                        docker buildx build \
-                            --platform linux/amd64,linux/arm64,linux/arm/v7 \
-                            -f Dockerfile.api \
-                            -t $DOCKER_IMAGE_API:latest \
-                            --push .
+                        docker build -f Dockerfile.api -t $DOCKER_IMAGE_API:latest .
+                        docker push $DOCKER_IMAGE_API:latest
 
-                        echo "🤖 Build BOT..."
-                        docker buildx build \
-                            --platform linux/amd64,linux/arm64,linux/arm/v7 \
-                            -f Dockerfile.bot \
-                            -t $DOCKER_IMAGE_BOT:latest \
-                            --push .
+                        docker build -f Dockerfile.bot -t $DOCKER_IMAGE_BOT:latest .
+                        docker push $DOCKER_IMAGE_BOT:latest
                     '''
                 }
             }
         }
 
-        // 🚀 DEPLOY NA VM (PULL DAS IMAGENS)
-        stage('Deploy na VM') {
+        stage('Deploy') {
             steps {
                 withCredentials([
                     string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN')
@@ -109,59 +89,28 @@ pipeline {
                     sh """
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${VM_USER}@${VM_IP} '
 
-                            echo "📦 Criando network..."
-                            docker network create helpdesk-net 2>/dev/null || true
+                        docker pull ${DOCKER_IMAGE_API}:latest
+                        docker pull ${DOCKER_IMAGE_BOT}:latest
 
-                            echo "⬇️ Baixando imagens..."
-                            docker pull ${DOCKER_IMAGE_API}:latest
-                            docker pull ${DOCKER_IMAGE_BOT}:latest
+                        docker rm -f helpdesk-api || true
+                        docker rm -f helpdesk-bot || true
 
-                            echo "🛑 Parando containers antigos..."
-                            docker stop helpdesk-api 2>/dev/null || true
-                            docker rm helpdesk-api 2>/dev/null || true
+                        docker run -d --name helpdesk-api -p 5000:5000 ${DOCKER_IMAGE_API}:latest
 
-                            docker stop helpdesk-bot 2>/dev/null || true
-                            docker rm helpdesk-bot 2>/dev/null || true
-
-                            echo "🚀 Subindo API..."
-                            docker run -d \
-                                --name helpdesk-api \
-                                --network helpdesk-net \
-                                -p 5000:5000 \
-                                -e DB_HOST=helpdesk-db \
-                                -e DB_PORT=5432 \
-                                -e DB_NAME=helpdesk \
-                                -e DB_USER=helpdesk_user \
-                                -e DB_PASSWORD=strongpassword \
-                                --restart unless-stopped \
-                                ${DOCKER_IMAGE_API}:latest
-
-                            echo "🤖 Subindo BOT..."
-                            docker run -d \
-                                --name helpdesk-bot \
-                                --network helpdesk-net \
-                                -e TELEGRAM_TOKEN="${TELEGRAM_TOKEN}" \
-                                --restart unless-stopped \
-                                ${DOCKER_IMAGE_BOT}:latest
-
-                            echo "🧹 Limpando imagens antigas..."
-                            docker image prune -f
+                        docker run -d --name helpdesk-bot \
+                            -e TELEGRAM_TOKEN="${TELEGRAM_TOKEN}" \
+                            ${DOCKER_IMAGE_BOT}:latest
                         '
                     """
                 }
             }
         }
 
-        // 🧪 HEALTHCHECK
-        stage('Verificar API') {
+        stage('Healthcheck') {
             steps {
                 sh """
-                    echo "⏳ Aguardando API subir..."
-                    sleep 20
-
-                    curl -sf http://${VM_IP}:5000/ticket \
-                        && echo "✅ API OK" \
-                        || echo "❌ API não respondeu"
+                    sleep 15
+                    curl -f http://${VM_IP}:5000/ && echo "API OK"
                 """
             }
         }
