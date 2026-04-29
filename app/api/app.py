@@ -7,28 +7,17 @@ from typing import Dict, Any, Tuple
 
 load_dotenv()
 
-# ==============================
-# 🔐 APP CONFIG
-# ==============================
+# 🔥 Cria tabelas (NÃO apagar dados em produção!)
+Base.metadata.create_all(bind=engine)
+
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
 
-# 🔥 IMPORTANTE: API stateless (Telegram bot)
-# Desabilita CSRF globalmente (evita alerta do Sonar e é seguro nesse contexto)
-app.config["WTF_CSRF_ENABLED"] = False
-
-# ==============================
-# 🗄️ DATABASE INIT
-# ==============================
-# ❗ NÃO apagar banco automaticamente em produção
-Base.metadata.create_all(bind=engine)
 
 # ==============================
 # 🔧 SERVICE LAYER
 # ==============================
 def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-
-    # 🔥 valida payload
     if not isinstance(data, dict):
         return {"error": "Payload deve ser um JSON válido"}, 400
 
@@ -44,7 +33,7 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             subcategory=data.get("subcategory"),
             description=data["description"],
             ai_suggestion=data.get("ai_suggestion"),
-            status="aberto"  # garante padrão esperado nos testes
+            status="aberto"
         )
 
         db.add(ticket)
@@ -65,7 +54,7 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 
 
 # ==============================
-# 🌐 ROUTES
+# 🌐 ROTAS
 # ==============================
 @app.route("/", methods=["GET"])
 def health():
