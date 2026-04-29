@@ -3,6 +3,7 @@ from app.database.db import SessionLocal, Base, engine
 from app.models.ticket import Ticket
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
+from typing import Optional, Dict, Tuple
 
 load_dotenv()
 
@@ -16,7 +17,7 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
-def create_ticket_service(data: dict):
+def create_ticket_service(data: Optional[Dict]) -> Tuple[Dict, int]:
     if not data:
         return {"error": "Payload vazio"}, 400
 
