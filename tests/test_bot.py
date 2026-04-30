@@ -31,6 +31,23 @@ def test_texto_none():
     resp = responder_automatico(None)
     assert resp is not None
 
+def test_faq_impressora():
+    resp = responder_automatico("impressora não imprime")
+    assert "impressora" in resp.lower()
+
+
+def test_faq_computador():
+    resp = responder_automatico("computador não liga")
+    assert "energia" in resp.lower()
+
+
+def test_faq_filamento():
+    resp = responder_automatico("problema com filamento")
+    assert "filamento" in resp.lower()
+    
+def test_internet_generico():
+    resp = responder_automatico("internet caiu geral")
+    assert resp is not None
 
 # =========================
 # TESTES PAYLOAD
