@@ -22,6 +22,11 @@ def responder_automatico(texto):
 
     texto = texto.lower()
 
+    # 🔥 usa FAQ primeiro (aumenta coverage)
+    for pergunta, resposta in FAQ.items():
+        if pergunta in texto:
+            return resposta
+
     if "internet" in texto:
         return "🔌 Reiniciar o roteador pode ajudar. Verifique também os cabos."
 
