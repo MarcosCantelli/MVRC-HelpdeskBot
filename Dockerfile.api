@@ -1,25 +1,23 @@
 FROM python:3.10-slim-bullseye
 
-# 🔥 dependências necessárias para psycopg2 (ARM e build nativo)
+# 🔥 dependências completas para build nativo
 RUN apt-get update && apt-get install -y \
     gcc \
+    build-essential \
+    python3-dev \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# cria usuário não-root
 RUN addgroup --system appgroup && adduser --system appuser --ingroup appgroup
 
 WORKDIR /app
 
-# copia e instala dependências primeiro (melhor cache)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# copia aplicação
 COPY . .
 
-# troca para usuário seguro
 USER appuser
 
 EXPOSE 5000
