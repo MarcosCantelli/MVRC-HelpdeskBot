@@ -16,15 +16,19 @@ FAQ = {
 }
 
 
-def responder_automatico(texto: str):
+def responder_automatico(texto):
     if not texto:
-        return None
+        return "Não entendi sua solicitação. Entre em contato com o suporte."
 
     texto = texto.lower()
-    for chave in FAQ:
-        if chave in texto:
-            return FAQ[chave]
-    return None
+
+    if "internet" in texto:
+        return "🔌 Reiniciar o roteador pode ajudar. Verifique também os cabos."
+
+    if "sem conexão" in texto or "sem internet" in texto:
+        return "❌ Verifique sua conexão ou reinicie o roteador."
+
+    return "Não entendi sua solicitação. Entre em contato com o suporte."
 
 
 def criar_payload(user, context):
