@@ -34,18 +34,25 @@ pipeline {
                 sh '''
                     set -e
 
+                    echo "🐍 Criando ambiente..."
                     python3 -m venv venv || true
                     . venv/bin/activate
 
+                    echo "📦 Instalando dependências..."
                     pip install --upgrade pip
                     pip install -r requirements.txt
 
+                    echo "🧪 Instalando ferramentas de teste..."
                     pip install pytest pytest-cov pytest-asyncio
 
+                    echo "🚀 Rodando testes..."
                     export PYTHONPATH=$(pwd)
                     export TEST_ENV=true
 
                     pytest --cov=app --cov-report=xml:coverage.xml
+
+                    echo "✅ Coverage gerado"
+                    ls -la coverage.xml
                 '''
             }
         }
@@ -76,6 +83,7 @@ pipeline {
                     sh '''
                         set -e
 
+                        echo "🔐 Login DockerHub..."
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
                         echo "🚀 Build API"
@@ -96,31 +104,33 @@ pipeline {
                     string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN')
                 ]) {
                     sh '''
-                        ssh -i '"$SSH_KEY"' -o StrictHostKeyChecking=no '"$VM_USER"'@'"$VM_IP"' << EOF
+                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << EOF
 
                         set -e
 
-                        echo "📥 Pull imagens"
-                        docker pull '"$DOCKER_IMAGE_API"':latest
-                        docker pull '"$DOCKER_IMAGE_BOT"':latest
+                        echo "📥 Pull das imagens..."
+                        docker pull $DOCKER_IMAGE_API:latest
+                        docker pull $DOCKER_IMAGE_BOT:latest
 
-                        echo "🧹 Removendo containers antigos"
+                        echo "🧹 Removendo containers antigos..."
                         docker rm -f helpdesk-api || true
                         docker rm -f helpdesk-bot || true
 
-                        echo "🚀 Subindo API"
+                        echo "🚀 Subindo API..."
                         docker run -d \
                           --name helpdesk-api \
                           --restart always \
                           -p 5000:5000 \
-                          '"$DOCKER_IMAGE_API"':latest
+                          $DOCKER_IMAGE_API:latest
 
-                        echo "🤖 Subindo BOT"
+                        echo "🤖 Subindo BOT..."
                         docker run -d \
                           --name helpdesk-bot \
                           --restart always \
                           -e TELEGRAM_TOKEN="$TELEGRAM_TOKEN" \
-                          '"$DOCKER_IMAGE_BOT"':latest
+                          $DOCKER_IMAGE_BOT:latest
+
+                        echo "✅ Deploy finalizado!"
 
                         EOF
                     '''
@@ -131,10 +141,10 @@ pipeline {
         stage('Healthcheck') {
             steps {
                 sh '''
-                    echo "⏳ Aguardando API..."
+                    echo "⏳ Aguardando API subir..."
                     sleep 15
 
-                    curl -f http://'"$VM_IP"':5000/ && echo "✅ API OK"
+                    curl -f http://$VM_IP:5000/ && echo "✅ API OK"
                 '''
             }
         }
