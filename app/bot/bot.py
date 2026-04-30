@@ -111,3 +111,10 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
     app.run_polling()
+    
+__all__ = [
+    "responder_automatico",
+    "criar_payload",
+    "enviar_ticket",
+    "criar_ticket",
+]

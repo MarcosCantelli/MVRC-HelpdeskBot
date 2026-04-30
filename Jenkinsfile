@@ -29,19 +29,38 @@ pipeline {
             }
         }
 
-        stage('Detect Project Type') {
-            steps {
-                script {
-                    devopsPipeline.detectProjectType()
-                }
-            }
-        }
-
         stage('Build & Test') {
             steps {
-                script {
-                    devopsPipeline.buildProject()
-                }
+                sh '''
+                    set -e
+
+                    echo "🐍 Python version:"
+                    python3 --version
+
+                    echo "Criando venv..."
+                    python3 -m venv venv || true
+
+                    echo "Ativando venv..."
+                    . venv/bin/activate
+
+                    echo "Atualizando pip..."
+                    python -m pip install --upgrade pip
+
+                    echo "Instalando dependências..."
+                    pip install -r requirements.txt
+
+                    echo "Instalando ferramentas de teste..."
+                    pip install pytest pytest-cov pytest-asyncio
+
+                    echo "Rodando testes..."
+                    export PYTHONPATH=$(pwd)
+                    export TEST_ENV=true
+
+                    pytest --cov=app --cov-report=xml:coverage.xml
+
+                    echo "Verificando coverage..."
+                    ls -la coverage.xml
+                '''
             }
         }
 
@@ -109,8 +128,10 @@ pipeline {
         stage('Healthcheck') {
             steps {
                 sh """
+                    echo "Aguardando API subir..."
                     sleep 15
-                    curl -f http://${VM_IP}:5000/ && echo "API OK"
+
+                    curl -f http://${VM_IP}:5000/ && echo "✅ API OK"
                 """
             }
         }

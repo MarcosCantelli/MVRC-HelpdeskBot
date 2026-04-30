@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch
-from app.bot.bot import responder_automatico, criar_payload, criar_ticket
+from app.bot.bot import responder_automatico, criar_payload, criar_ticket, enviar_ticket
 
 
 # =========================
@@ -31,6 +31,7 @@ def test_texto_none():
     resp = responder_automatico(None)
     assert resp is not None
 
+
 def test_faq_impressora():
     resp = responder_automatico("impressora não imprime")
     assert "impressora" in resp.lower()
@@ -44,20 +45,26 @@ def test_faq_computador():
 def test_faq_filamento():
     resp = responder_automatico("problema com filamento")
     assert "filamento" in resp.lower()
-    
+
+
 def test_internet_generico():
     resp = responder_automatico("internet caiu geral")
     assert resp is not None
 
+
+# 🔥 CORREÇÃO AQUI
 def test_enviar_ticket_mock():
     def fake_post(url, json):
-        return type("Resp", (), {"json": lambda: {"id": 123}})()
+        return type("Resp", (), {
+            "json": lambda self: {"id": 123}
+        })()
 
     payload = {"user": "teste"}
 
     resp = enviar_ticket(payload, request_func=fake_post)
 
     assert resp["id"] == 123
+
 
 # =========================
 # TESTES PAYLOAD
