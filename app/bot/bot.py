@@ -7,6 +7,7 @@ import os
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
+API_URL = os.getenv("API_URL", "http://helpdesk-api:5000/ticket")
 
 FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
@@ -18,25 +19,30 @@ FAQ = {
 
 def responder_automatico(texto):
     if not texto:
-        return "Não entendi sua solicitação. Entre em contato com o suporte."
+        return mensagem_padrao()
 
     texto = texto.lower()
 
-    # 🔥 FAQ primeiro (melhora coverage e comportamento)
     for chave, resposta in FAQ.items():
         if chave in texto:
             return resposta
 
-    if "internet" in texto:
-        return "🔌 Reiniciar o roteador pode ajudar. Verificar também os cabos."
-
     if "sem conexão" in texto or "sem internet" in texto:
         return "❌ Verificar conexão ou reiniciar o roteador."
 
+    if "internet" in texto:
+        return "🔌 Reiniciar o roteador pode ajudar. Verificar também os cabos."
+
+    return mensagem_padrao()
+
+
+def mensagem_padrao():
     return "Não entendi sua solicitação. Entre em contato com o suporte."
 
 
 def criar_payload(user, context):
+    context = context or {}
+
     return {
         "user": user,
         "description": context.get("descricao"),
@@ -46,16 +52,18 @@ def criar_payload(user, context):
     }
 
 
+def enviar_ticket(payload, request_func=requests.post):
+    """
+    🔥 Separado pra facilitar teste (mock)
+    """
+    response = request_func(API_URL, json=payload)
+    return response.json()
+
+
 async def criar_ticket(update, user, context):
     try:
         payload = criar_payload(user, context)
-
-        response = requests.post(
-            "http://helpdesk-api:5000/ticket",
-            json=payload
-        )
-
-        data = response.json()
+        data = enviar_ticket(payload)
 
         await update.message.reply_text(
             f"🎟️ Chamado #{data.get('id')} criado!"
