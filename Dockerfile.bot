@@ -1,12 +1,12 @@
 FROM python:3.10-slim-bullseye
 
+# dependências mínimas
 RUN apt-get update && apt-get install -y \
     gcc \
-    build-essential \
-    python3-dev \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# usuário seguro
 RUN addgroup --system appgroup && adduser --system appuser --ingroup appgroup
 
 WORKDIR /app
@@ -20,4 +20,6 @@ COPY . .
 
 USER appuser
 
-CMD ["python", "-m", "app.bot.bot"]
+EXPOSE 5000
+
+CMD ["python", "-m", "app.api.app"]
