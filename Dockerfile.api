@@ -1,6 +1,6 @@
 FROM python:3.10-slim-bullseye
 
-# 🔥 dependências completas para build nativo
+# 🔥 dependências completas para compilar libs no ARM
 RUN apt-get update && apt-get install -y \
     gcc \
     build-essential \
@@ -8,11 +8,13 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# usuário não-root
 RUN addgroup --system appgroup && adduser --system appuser --ingroup appgroup
 
 WORKDIR /app
 
 COPY requirements.txt .
+
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
