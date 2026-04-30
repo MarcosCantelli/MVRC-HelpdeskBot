@@ -9,10 +9,10 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 FAQ = {
-    "internet lenta": "🔌 Reinicie o roteador e verifique os cabos.",
-    "computador não liga": "⚡ Verifique fonte e cabo de energia.",
-    "impressora não imprime": "🖨️ Verifique conexão e tinta.",
-    "filamento": "🧵 Verifique se o filamento não travou.",
+    "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
+    "computador não liga": "⚡ Verificar fonte e cabo de energia.",
+    "impressora não imprime": "🖨️ Impressora: verificar conexão e tinta.",
+    "filamento": "🧵 Verificar se o filamento não travou.",
 }
 
 
@@ -22,16 +22,16 @@ def responder_automatico(texto):
 
     texto = texto.lower()
 
-    # 🔥 usa FAQ primeiro (aumenta coverage)
-    for pergunta, resposta in FAQ.items():
-        if pergunta in texto:
+    # 🔥 FAQ primeiro (melhora coverage e comportamento)
+    for chave, resposta in FAQ.items():
+        if chave in texto:
             return resposta
 
     if "internet" in texto:
-        return "🔌 Reiniciar o roteador pode ajudar. Verifique também os cabos."
+        return "🔌 Reiniciar o roteador pode ajudar. Verificar também os cabos."
 
     if "sem conexão" in texto or "sem internet" in texto:
-        return "❌ Verifique sua conexão ou reinicie o roteador."
+        return "❌ Verificar conexão ou reiniciar o roteador."
 
     return "Não entendi sua solicitação. Entre em contato com o suporte."
 
