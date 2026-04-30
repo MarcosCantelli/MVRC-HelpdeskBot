@@ -17,12 +17,17 @@ FAQ = {
 }
 
 
+def mensagem_padrao():
+    return "Não entendi sua solicitação. Entre em contato com o suporte."
+
+
 def responder_automatico(texto):
     if not texto:
         return mensagem_padrao()
 
     texto = texto.lower()
 
+    # FAQ primeiro (melhor cobertura e assertividade)
     for chave, resposta in FAQ.items():
         if chave in texto:
             return resposta
@@ -34,10 +39,6 @@ def responder_automatico(texto):
         return "🔌 Reiniciar o roteador pode ajudar. Verificar também os cabos."
 
     return mensagem_padrao()
-
-
-def mensagem_padrao():
-    return "Não entendi sua solicitação. Entre em contato com o suporte."
 
 
 def criar_payload(user, context):
@@ -53,11 +54,14 @@ def criar_payload(user, context):
 
 
 def enviar_ticket(payload, request_func=requests.post):
-    """
-    🔥 Separado pra facilitar teste (mock)
-    """
-    response = request_func(API_URL, json=payload)
-    return response.json()
+    try:
+        response = request_func(
+            API_URL,
+            json=payload
+        )
+        return response.json()
+    except Exception:
+        return None
 
 
 async def criar_ticket(update, user, context):
@@ -65,9 +69,12 @@ async def criar_ticket(update, user, context):
         payload = criar_payload(user, context)
         data = enviar_ticket(payload)
 
-        await update.message.reply_text(
-            f"🎟️ Chamado #{data.get('id')} criado!"
-        )
+        if data and data.get("id"):
+            mensagem = f"🎟️ Chamado #{data.get('id')} criado!"
+        else:
+            mensagem = "❌ Erro ao criar chamado."
+
+        await update.message.reply_text(mensagem)
 
     except Exception:
         await update.message.reply_text("❌ Erro ao criar chamado.")
@@ -86,7 +93,7 @@ if __name__ == "__main__":
         )
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = update.message.text
+        text = update.message.text if update.message else None
 
         resposta = responder_automatico(text)
 
