@@ -27,7 +27,6 @@ def responder_automatico(texto):
 
     texto = texto.lower()
 
-    # FAQ primeiro (melhor cobertura e assertividade)
     for chave, resposta in FAQ.items():
         if chave in texto:
             return resposta
@@ -53,13 +52,19 @@ def criar_payload(user, context):
     }
 
 
-def enviar_ticket(payload, request_func=requests.post):
+def enviar_ticket(payload, request_func=None):
+    if request_func is None:
+        request_func = requests.post
+
     try:
-        response = request_func(
-            API_URL,
-            json=payload
-        )
-        return response.json()
+        response = request_func(API_URL, json=payload)
+
+        # 🔥 compatível com mock e requests real
+        if hasattr(response, "json"):
+            return response.json()
+
+        return None
+
     except Exception:
         return None
 
@@ -70,11 +75,11 @@ async def criar_ticket(update, user, context):
         data = enviar_ticket(payload)
 
         if data and data.get("id"):
-            mensagem = f"🎟️ Chamado #{data.get('id')} criado!"
+            await update.message.reply_text(
+                f"🎟️ Chamado #{data.get('id')} criado!"
+            )
         else:
-            mensagem = "❌ Erro ao criar chamado."
-
-        await update.message.reply_text(mensagem)
+            await update.message.reply_text("❌ Erro ao criar chamado.")
 
     except Exception:
         await update.message.reply_text("❌ Erro ao criar chamado.")
@@ -93,7 +98,7 @@ if __name__ == "__main__":
         )
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = update.message.text if update.message else None
+        text = update.message.text
 
         resposta = responder_automatico(text)
 
