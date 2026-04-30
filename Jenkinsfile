@@ -90,8 +90,19 @@ pipeline {
                     sh '''
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-                        docker build -f Dockerfile.api -t $DOCKER_IMAGE_API:latest .
-                        docker push $DOCKER_IMAGE_API:latest
+                        docker buildx create --use || true
+
+                        docker buildx build \
+                          --platform linux/amd64,linux/arm/v7 \
+                          -f Dockerfile.api \
+                          -t $DOCKER_IMAGE_API:latest \
+                          --push .
+                        
+                        docker buildx build \
+                          --platform linux/amd64,linux/arm/v7 \
+                          -f Dockerfile.bot \
+                          -t $DOCKER_IMAGE_BOT:latest \
+                          --push .
 
                         docker build -f Dockerfile.bot -t $DOCKER_IMAGE_BOT:latest .
                         docker push $DOCKER_IMAGE_BOT:latest
