@@ -49,6 +49,16 @@ def test_internet_generico():
     resp = responder_automatico("internet caiu geral")
     assert resp is not None
 
+def test_enviar_ticket_mock():
+    def fake_post(url, json):
+        return type("Resp", (), {"json": lambda: {"id": 123}})()
+
+    payload = {"user": "teste"}
+
+    resp = enviar_ticket(payload, request_func=fake_post)
+
+    assert resp["id"] == 123
+
 # =========================
 # TESTES PAYLOAD
 # =========================
