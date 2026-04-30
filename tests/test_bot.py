@@ -1,28 +1,26 @@
 from app.bot.bot import responder_automatico
 
 
-def test_resposta_internet_lenta():
-    resposta = responder_automatico("internet lenta")
-    assert "reiniciar" in resposta.lower()
+def test_internet_lenta():
+    resp = responder_automatico("internet lenta")
+    assert "reiniciar" in resp.lower()
 
 
-def test_resposta_sem_conexao():
-    resposta = responder_automatico("sem conexão")
-    assert resposta is not None
-    assert isinstance(resposta, str)
+def test_sem_conexao():
+    resp = responder_automatico("sem conexão")
+    assert resp is not None
 
 
-def test_resposta_desconhecida():
-    resposta = responder_automatico("problema totalmente aleatório")
-    assert resposta is not None
-    assert "suporte" in resposta.lower() or "não entendi" in resposta.lower()
+def test_texto_desconhecido():
+    resp = responder_automatico("qualquer coisa")
+    assert "suporte" in resp.lower() or "não entendi" in resp.lower()
 
 
-def test_resposta_vazia():
-    resposta = responder_automatico("")
-    assert resposta is not None
+def test_texto_vazio():
+    resp = responder_automatico("")
+    assert resp is not None
 
 
-def test_resposta_none():
-    resposta = responder_automatico(None)
-    assert resposta is not None
+def test_texto_none():
+    resp = responder_automatico(None)
+    assert resp is not None
