@@ -31,7 +31,7 @@ def sugerir_solucao(texto):
 
     texto = texto.lower()
 
-    if "lento" in texto:
+    if "lento" in texto or "lenta" in texto:
         return "💻 Sugestão: reiniciar o computador."
 
     if "internet" in texto:
@@ -66,14 +66,21 @@ def responder_automatico(texto):
 # DETECTAR COMPLEXIDADE
 # =========================
 def problema_simples(texto):
+    if not texto:
+        return False
+
     texto = texto.lower()
 
-    simples = ["lento", "não imprime", "travando", "wifi fraco"]
-    for s in simples:
-        if s in texto:
-            return True
+    simples = [
+        "lento",
+        "lenta",
+        "internet lenta",
+        "não imprime",
+        "travando",
+        "wifi fraco"
+    ]
 
-    return False
+    return any(s in texto for s in simples)
 
 
 # =========================
@@ -131,7 +138,11 @@ def notificar_telegram(user, ticket_id, request_func=None):
 # =========================
 async def criar_ticket(update, user, context):
     payload = criar_payload(user, context)
-    data = enviar_ticket(payload)
+
+    try:
+        data = enviar_ticket(payload)
+    except Exception:
+        data = None
 
     if data and data.get("id"):
         await update.message.reply_text(f"🎟️ Chamado #{data['id']} criado!")
@@ -163,6 +174,12 @@ def run_bot(token=None):
         text = update.message.text
         step = context.user_data.get("step")
 
+        # 🔥 Corrige step None (testes começam sem estado)
+        if not step:
+            context.user_data["step"] = "tipo"
+            await update.message.reply_text("Escolha Hardware ou Software.")
+            return
+
         # =========================
         # STEP 1 - tipo
         # =========================
@@ -185,6 +202,10 @@ def run_bot(token=None):
 
                 await update.message.reply_text("Descreva o problema:")
                 return
+
+            # 🔥 fallback obrigatório
+            await update.message.reply_text("Escolha Hardware ou Software.")
+            return
 
         # =========================
         # STEP 2 - equipamento
@@ -224,10 +245,11 @@ def run_bot(token=None):
             if "sim" in text.lower():
                 context.user_data["step"] = "finalizado"
                 await update.message.reply_text("✅ Perfeito!")
-            else:
+            elif "não" in text.lower() or "nao" in text.lower():
                 await criar_ticket(update, "anonimo", context.user_data)
                 context.user_data["step"] = "finalizado"
-
+            else:
+                await update.message.reply_text("Responda com sim ou não.")
             return
 
     app.add_handler(CommandHandler("start", start))
