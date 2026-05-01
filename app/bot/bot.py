@@ -20,31 +20,30 @@ FAQ = {
 
 
 def mensagem_padrao():
-    return "Não entendi sua solicitação. Deseja abrir um chamado?"
+    return "Não entendi sua solicitação. Entre em contato com o suporte."
 
 
-# 🔥 NOVA IA SIMPLES (PASSA NO SONAR + TESTE)
+# =========================
+# IA SIMPLES (SUGESTÕES)
+# =========================
 def sugerir_solucao(texto):
     if not texto:
-        return None
+        return "💡 Sugestão: verificar o equipamento e reiniciar."
 
     texto = texto.lower()
 
-    if "internet" in texto:
-        return "🔌 Sugestão: reinicie o roteador e verifique os cabos."
-
-    if "celular" in texto:
-        return "📱 Sugestão: reinicie o celular e verifique conexão Wi-Fi."
-
-    if "computador" in texto or "pc" in texto:
-        return "💻 Sugestão: reinicie o computador e verifique energia."
-
     if "lento" in texto:
-        return "⚡ Sugestão: feche programas em segundo plano."
+        return "💻 Sugestão: reiniciar o computador e verificar energia."
 
-    return None
+    if "internet" in texto:
+        return "🌐 Sugestão: reiniciar o roteador."
+
+    return "💡 Sugestão: verificar o problema e reiniciar o dispositivo."
 
 
+# =========================
+# RESPOSTA AUTOMÁTICA
+# =========================
 def responder_automatico(texto):
     if not texto:
         return mensagem_padrao()
@@ -59,23 +58,29 @@ def responder_automatico(texto):
         return "❌ Verificar conexão ou reiniciar o roteador."
 
     if "internet" in texto:
-        return "🔌 Reiniciar o roteador pode ajudar."
+        return "🔌 Reiniciar o roteador pode ajudar. Verificar também os cabos."
 
-    return None  # 🔥 importante pra cair no fluxo de ticket
+    return mensagem_padrao()
 
 
+# =========================
+# PAYLOAD
+# =========================
 def criar_payload(user, context):
     context = context or {}
 
     return {
         "user": user,
         "description": context.get("descricao"),
-        "category": context.get("category"),
-        "subcategory": context.get("subcategory"),
-        "ai_suggestion": context.get("ai")
+        "category": context.get("categoria"),
+        "subcategory": context.get("dispositivo"),
+        "ai_suggestion": context.get("sugestao")
     }
 
 
+# =========================
+# API
+# =========================
 def enviar_ticket(payload, request_func=None):
     if request_func is None:
         request_func = requests.post
@@ -92,35 +97,30 @@ def enviar_ticket(payload, request_func=None):
         return None
 
 
-async def notificar_admin(ticket_id, user):
-    if not TELEGRAM_CHAT_ID:
-        return
-
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={
-                "chat_id": TELEGRAM_CHAT_ID,
-                "text": f"📢 Novo chamado aberto!\n👤 Usuário: {user}\n🎟️ Ticket: #{ticket_id}"
-            }
-        )
-    except Exception:
-        pass
-
-
+# =========================
+# CRIAÇÃO DE TICKET
+# =========================
 async def criar_ticket(update, user, context):
     try:
         payload = criar_payload(user, context)
         data = enviar_ticket(payload)
 
         if data and data.get("id"):
-            ticket_id = data.get("id")
+            msg = f"🎟️ Chamado #{data.get('id')} criado!"
+            await update.message.reply_text(msg)
 
-            await update.message.reply_text(
-                f"🎟️ Chamado #{ticket_id} criado com sucesso!"
-            )
-
-            await notificar_admin(ticket_id, user)
+            # 🔥 Notificação para você
+            if TELEGRAM_CHAT_ID:
+                try:
+                    requests.post(
+                        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                        json={
+                            "chat_id": TELEGRAM_CHAT_ID,
+                            "text": f"🚨 Novo chamado aberto!\n👤 {user}\n🎟️ #{data.get('id')}"
+                        }
+                    )
+                except Exception:
+                    pass
 
         else:
             await update.message.reply_text("❌ Erro ao criar chamado.")
@@ -129,7 +129,9 @@ async def criar_ticket(update, user, context):
         await update.message.reply_text("❌ Erro ao criar chamado.")
 
 
-# 🔥 BOT
+# =========================
+# BOT
+# =========================
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -137,31 +139,26 @@ if __name__ == "__main__":
         keyboard = [["🖥️ Hardware", "💻 Software"]]
 
         await update.message.reply_text(
-            "Bem-vindo ao HelpDesk!\nO problema é de hardware ou software?",
+            "Bem-vindo ao HelpDesk! O problema é hardware ou software?",
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text
 
-        # 🔥 IA primeiro
-        sugestao = sugerir_solucao(text)
+        # Guarda descrição
+        context.user_data["descricao"] = text
 
-        if sugestao:
-            context.user_data["ai"] = sugestao
-            await update.message.reply_text(sugestao)
-            await update.message.reply_text("Isso resolveu? Se não, descreva o problema.")
-            return
+        # IA sugere solução
+        sugestao = sugerir_solucao(text)
+        context.user_data["sugestao"] = sugestao
 
         resposta = responder_automatico(text)
 
-        if resposta:
-            await update.message.reply_text(resposta)
-            return
+        await update.message.reply_text(resposta)
+        await update.message.reply_text(sugestao)
 
-        # 🔥 salva descrição e abre ticket
-        context.user_data["descricao"] = text
-
+        # Cria ticket direto (pode evoluir depois)
         await criar_ticket(update, "anonimo", context.user_data)
 
     app.add_handler(CommandHandler("start", start))
@@ -172,8 +169,8 @@ if __name__ == "__main__":
 
 __all__ = [
     "responder_automatico",
-    "sugerir_solucao",
     "criar_payload",
     "enviar_ticket",
     "criar_ticket",
+    "sugerir_solucao"
 ]
