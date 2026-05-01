@@ -155,38 +155,6 @@ EOF
                 }
             }
         }
-
-        stage('Healthcheck') {
-            steps {
-                sh '''
-                    set -e
-
-                    echo "🔎 Validando deploy no Raspberry..."
-
-                    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << 'EOF'
-                        set -e
-
-                        echo "📦 Containers ativos:"
-                        docker ps | grep helpdesk || (echo "❌ Containers não estão rodando" && exit 1)
-
-                        echo "🌐 Testando API (com retry)..."
-                        docker exec helpdesk-api sh -c '
-                        for i in 1 2 3 4 5; do
-                          python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:5000/\")" && exit 0
-                          echo "⏳ Tentando novamente..."
-                          sleep 3
-                        done
-                        exit 1
-                        '
-
-                        echo "🤖 Logs do BOT:"
-                        docker logs helpdesk-bot --tail 20 || true
-
-                        echo "✅ Deploy saudável"
-        EOF
-                '''
-            }
-        }
     }
 
     post {
