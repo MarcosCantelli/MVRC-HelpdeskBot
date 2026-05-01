@@ -19,7 +19,7 @@ class FakeUpdate:
 
 @pytest.mark.asyncio
 async def test_handle_message(monkeypatch):
-    app = run_bot()
+    app = run_bot(token="fake-token")
 
     update = FakeUpdate()
     context = SimpleNamespace(user_data={})
@@ -31,7 +31,7 @@ async def test_handle_message(monkeypatch):
     async def fake_ticket(update, user, context):
         return None
 
-    monkeypatch.setattr("app.bot.bot.criar_ticket", fake_ticket)
+    monkeypatch.setattr("app.bot.bot.TOKEN", "fake-token")
 
     await handler.callback(update, context)
 

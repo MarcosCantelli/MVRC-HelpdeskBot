@@ -144,8 +144,13 @@ async def criar_ticket(update, user, context):
 # =========================
 # BOT (REFATORADO)
 # =========================
-def run_bot():
-    app = ApplicationBuilder().token(TOKEN).build()
+def run_bot(token=None):
+    token = token or TOKEN
+
+    if not token:
+        raise ValueError("TOKEN do Telegram não configurado")
+
+    app = ApplicationBuilder().token(token).build()
 
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [["🖥️ Hardware", "💻 Software"]]
@@ -175,10 +180,9 @@ def run_bot():
 
     return app
 
-
 if __name__ == "__main__":
-    run_bot().run_polling()
-
+    app = run_bot()
+    app.run_polling()
 
 __all__ = [
     "responder_automatico",
