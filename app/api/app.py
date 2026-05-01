@@ -7,7 +7,7 @@ from typing import Dict, Any, Tuple
 
 load_dotenv()
 
-# 🔥 Cria tabelas (NÃO apagar dados em produção!)
+# 🔥 Cria tabelas
 Base.metadata.create_all(bind=engine)
 
 app = Flask(__name__)
@@ -21,8 +21,8 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     if not isinstance(data, dict):
         return {"error": "Payload deve ser um JSON válido"}, 400
 
-    if "user" not in data or "description" not in data:
-        return {"error": "Dados inválidos"}, 400
+    if not data.get("user") or not data.get("description"):
+        return {"error": "Campos obrigatórios: user, description"}, 400
 
     db = SessionLocal()
 
@@ -47,7 +47,8 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 
     except Exception as e:
         db.rollback()
-        return {"error": str(e)}, 500
+        print("🔥 ERRO AO CRIAR TICKET:", e)  # log no console
+        return {"error": "erro interno"}, 500
 
     finally:
         db.close()
@@ -64,6 +65,8 @@ def health():
 @app.route("/ticket", methods=["POST"])
 def create_ticket():
     data = request.get_json(silent=True)
+    print("📥 Payload recebido:", data)  # debug
+
     response, status = create_ticket_service(data)
     return jsonify(response), status
 
@@ -72,4 +75,5 @@ def create_ticket():
 # 🚀 ENTRYPOINT
 # ==============================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    print("🚀 API iniciando em 0.0.0.0:5000")
+    app.run(host="0.0.0.0", port=5000, debug=True)
