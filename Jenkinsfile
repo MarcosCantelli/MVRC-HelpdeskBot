@@ -11,6 +11,11 @@ pipeline {
         SSH_KEY = '/var/lib/jenkins/.ssh/ansible_key'
     }
 
+    options {
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
     stages {
 
         stage('Checkout') {
@@ -24,18 +29,22 @@ pipeline {
                 sh '''
                     set -e
 
-                    python3 -m venv venv || true
+                    echo "🐍 Criando ambiente Python"
+                    python3 -m venv venv
                     . venv/bin/activate
 
+                    echo "📦 Instalando dependências"
                     pip install --upgrade pip
                     pip install -r requirements.txt
 
+                    echo "🧪 Instalando libs de teste"
                     pip install pytest pytest-cov pytest-asyncio
 
                     export PYTHONPATH=$(pwd)
                     export TEST_ENV=true
 
-                    pytest --cov=app --cov-report=xml:coverage.xml || true
+                    echo "🚀 Rodando testes"
+                    pytest --cov=app --cov-report=xml:coverage.xml
                 '''
             }
         }
@@ -45,12 +54,11 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "🔧 Ativando suporte multi-arch..."
-                    docker run --privileged --rm tonistiigi/binfmt --install all || true
+                    echo "🔧 Ativando multi-arch (binfmt)"
+                    docker run --privileged --rm tonistiigi/binfmt --install all
 
-                    echo "🔧 Criando builder buildx..."
-                    docker buildx create --use --name multiarch_builder || true
-
+                    echo "🔧 Criando builder buildx"
+                    docker buildx create --name multiarch_builder --use || true
                     docker buildx inspect --bootstrap
                 '''
             }
@@ -70,18 +78,18 @@ pipeline {
                         echo "🔐 Login Docker Hub"
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-                        echo "📦 Build API (ARMv7)"
+                        echo "📦 Build & Push API (ARMv7)"
                         docker buildx build \
                           --platform linux/arm/v7 \
                           -f Dockerfile.api \
-                          -t $DOCKER_IMAGE_API:latest \
+                          -t mrhightech/helpdesk-api:latest \
                           --push .
 
-                        echo "📦 Build BOT (ARMv7)"
+                        echo "📦 Build & Push BOT (ARMv7)"
                         docker buildx build \
                           --platform linux/arm/v7 \
                           -f Dockerfile.bot \
-                          -t $DOCKER_IMAGE_BOT:latest \
+                          -t mrhightech/helpdesk-bot:latest \
                           --push .
                     '''
                 }
@@ -94,37 +102,37 @@ pipeline {
                     string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN')
                 ]) {
 
-                    sh '''
-                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << EOF
-
+                    sh """
                         set -e
 
-                        echo "🧹 Limpando containers antigos..."
-                        docker rm -f helpdesk-api || true
-                        docker rm -f helpdesk-bot || true
+                        ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${VM_USER}@${VM_IP} '
+                            set -e
 
-                        echo "📥 Baixando imagens..."
-                        docker pull mrhightech/helpdesk-api:latest
-                        docker pull mrhightech/helpdesk-bot:latest
+                            echo "🧹 Removendo containers antigos"
+                            docker rm -f helpdesk-api || true
+                            docker rm -f helpdesk-bot || true
 
-                        echo "🚀 Subindo API..."
-                        docker run -d \
-                          --name helpdesk-api \
-                          --restart always \
-                          -p 5000:5000 \
-                          mrhightech/helpdesk-api:latest
+                            echo "📥 Pull imagens atualizadas"
+                            docker pull mrhightech/helpdesk-api:latest
+                            docker pull mrhightech/helpdesk-bot:latest
 
-                        echo "🤖 Subindo BOT..."
-                        docker run -d \
-                          --name helpdesk-bot \
-                          --restart always \
-                          -e TELEGRAM_TOKEN="$TELEGRAM_TOKEN" \
-                          mrhightech/helpdesk-bot:latest
+                            echo "🚀 Subindo API"
+                            docker run -d \
+                              --name helpdesk-api \
+                              --restart always \
+                              -p 5000:5000 \
+                              mrhightech/helpdesk-api:latest
 
-                        echo "✅ Deploy finalizado!"
+                            echo "🤖 Subindo BOT"
+                            docker run -d \
+                              --name helpdesk-bot \
+                              --restart always \
+                              -e TELEGRAM_TOKEN=${TELEGRAM_TOKEN} \
+                              mrhightech/helpdesk-bot:latest
 
-                        EOF
-                    '''
+                            echo "✅ Deploy concluído"
+                        '
+                    """
                 }
             }
         }
@@ -132,10 +140,14 @@ pipeline {
         stage('Healthcheck') {
             steps {
                 sh '''
-                    echo "⏳ Aguardando API..."
+                    set -e
+
+                    echo "⏳ Aguardando API subir..."
                     sleep 20
 
-                    curl -f http://$VM_IP:5000/ && echo "✅ API OK"
+                    curl -f http://$VM_IP:5000/ || exit 1
+
+                    echo "✅ API OK"
                 '''
             }
         }
@@ -144,6 +156,14 @@ pipeline {
     post {
         always {
             cleanWs()
+        }
+
+        success {
+            echo "✅ Pipeline executado com sucesso"
+        }
+
+        failure {
+            echo "❌ Pipeline falhou - verifique logs acima"
         }
     }
 }
