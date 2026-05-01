@@ -3,8 +3,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE_API = 'mvrc/helpdesk-api'
-        DOCKER_IMAGE_BOT = 'mvrc/helpdesk-bot'
+        DOCKER_IMAGE_API = 'mrhightech/helpdesk-api'
+        DOCKER_IMAGE_BOT = 'mrhightech/helpdesk-bot'
 
         VM_IP   = '192.168.31.229'
         VM_USER = 'mvrc'
@@ -104,22 +104,22 @@ pipeline {
                         docker rm -f helpdesk-bot || true
 
                         echo "📥 Baixando imagens..."
-                        docker pull mvrc/helpdesk-api:latest
-                        docker pull mvrc/helpdesk-bot:latest
+                        docker pull mrhightech/helpdesk-api:latest
+                        docker pull mrhightech/helpdesk-bot:latest
 
                         echo "🚀 Subindo API..."
                         docker run -d \
                           --name helpdesk-api \
                           --restart always \
                           -p 5000:5000 \
-                          mvrc/helpdesk-api:latest
+                          mrhightech/helpdesk-api:latest
 
                         echo "🤖 Subindo BOT..."
                         docker run -d \
                           --name helpdesk-bot \
                           --restart always \
                           -e TELEGRAM_TOKEN="$TELEGRAM_TOKEN" \
-                          mvrc/helpdesk-bot:latest
+                          mrhightech/helpdesk-bot:latest
 
                         echo "✅ Deploy finalizado!"
 
