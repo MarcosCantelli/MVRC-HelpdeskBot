@@ -15,16 +15,28 @@ FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
     "computador não liga": "⚡ Verificar fonte e cabo de energia.",
     "impressora não imprime": "🖨️ Impressora: verificar conexão e tinta.",
-    "filamento": "🧵 Verificar se o filamento não travou.",
 }
 
 
+# =========================
+# UTILS
+# =========================
 def mensagem_padrao():
     return "Não entendi sua solicitação. Entre em contato com o suporte."
 
 
+def problema_simples(texto: str) -> bool:
+    if not texto:
+        return False
+
+    texto = texto.lower()
+
+    palavras_simples = ["lento", "internet", "wifi", "reiniciar"]
+    return any(p in texto for p in palavras_simples)
+
+
 # =========================
-# IA SIMPLES (SUGESTÕES)
+# IA SIMPLES
 # =========================
 def sugerir_solucao(texto):
     if not texto:
@@ -33,34 +45,12 @@ def sugerir_solucao(texto):
     texto = texto.lower()
 
     if "lento" in texto:
-        return "💻 Sugestão: reiniciar o computador e verificar energia."
+        return "💻 Sugestão: reiniciar o computador."
 
     if "internet" in texto:
         return "🌐 Sugestão: reiniciar o roteador."
 
-    return "💡 Sugestão: verificar o problema e reiniciar o dispositivo."
-
-
-# =========================
-# RESPOSTA AUTOMÁTICA
-# =========================
-def responder_automatico(texto):
-    if not texto:
-        return mensagem_padrao()
-
-    texto = texto.lower()
-
-    for chave, resposta in FAQ.items():
-        if chave in texto:
-            return resposta
-
-    if "sem conexão" in texto or "sem internet" in texto:
-        return "❌ Verificar conexão ou reiniciar o roteador."
-
-    if "internet" in texto:
-        return "🔌 Reiniciar o roteador pode ajudar. Verificar também os cabos."
-
-    return mensagem_padrao()
+    return "💡 Sugestão: verificar e reiniciar o dispositivo."
 
 
 # =========================
@@ -71,10 +61,10 @@ def criar_payload(user, context):
 
     return {
         "user": user,
-        "description": context.get("descricao") or context.get("description"),
-        "category": context.get("categoria") or context.get("category"),
-        "subcategory": context.get("dispositivo") or context.get("subcategory"),
-        "ai_suggestion": context.get("sugestao") or context.get("ai")
+        "description": context.get("descricao"),
+        "category": context.get("categoria"),
+        "subcategory": context.get("dispositivo"),
+        "ai_suggestion": context.get("sugestao")
     }
 
 
@@ -82,30 +72,20 @@ def criar_payload(user, context):
 # API
 # =========================
 def enviar_ticket(payload, request_func=None):
-    if request_func is None:
-        request_func = requests.post
+    request_func = request_func or requests.post
 
     try:
         response = request_func(API_URL, json=payload)
-
-        if hasattr(response, "json"):
-            return response.json()
-
-        return None
-
+        return response.json() if hasattr(response, "json") else None
     except Exception:
         return None
 
 
-# =========================
-# NOTIFICAÇÃO TELEGRAM (NOVO - TESTÁVEL)
-# =========================
 def notificar_telegram(user, ticket_id, request_func=None):
     if not TELEGRAM_CHAT_ID:
         return None
 
-    if request_func is None:
-        request_func = requests.post
+    request_func = request_func or requests.post
 
     try:
         return request_func(
@@ -120,29 +100,21 @@ def notificar_telegram(user, ticket_id, request_func=None):
 
 
 # =========================
-# CRIAÇÃO DE TICKET
+# TICKET
 # =========================
 async def criar_ticket(update, user, context):
-    try:
-        payload = criar_payload(user, context)
-        data = enviar_ticket(payload)
+    payload = criar_payload(user, context)
+    data = enviar_ticket(payload)
 
-        if data and data.get("id"):
-            msg = f"🎟️ Chamado #{data.get('id')} criado!"
-            await update.message.reply_text(msg)
-
-            # agora testável
-            notificar_telegram(user, data.get("id"))
-
-        else:
-            await update.message.reply_text("❌ Erro ao criar chamado.")
-
-    except Exception:
+    if data and data.get("id"):
+        await update.message.reply_text(f"🎟️ Chamado #{data['id']} criado!")
+        notificar_telegram(user, data["id"])
+    else:
         await update.message.reply_text("❌ Erro ao criar chamado.")
 
 
 # =========================
-# BOT (REFATORADO)
+# BOT (FLUXO COM ESTADO)
 # =========================
 def run_bot(token=None):
     token = token or TOKEN
@@ -153,6 +125,9 @@ def run_bot(token=None):
     app = ApplicationBuilder().token(token).build()
 
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data.clear()
+        context.user_data["step"] = "tipo"
+
         keyboard = [["🖥️ Hardware", "💻 Software"]]
 
         await update.message.reply_text(
@@ -162,34 +137,103 @@ def run_bot(token=None):
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text
+        step = context.user_data.get("step")
 
-        context.user_data["descricao"] = text
+        # =========================
+        # ESCOLHA TIPO
+        # =========================
+        if step == "tipo":
+            if "hardware" in text.lower():
+                context.user_data["categoria"] = "hardware"
+                context.user_data["step"] = "equipamento"
 
-        sugestao = sugerir_solucao(text)
-        context.user_data["sugestao"] = sugestao
+                keyboard = [["Computador", "Notebook"], ["Celular", "Impressora", "Modem"]]
 
-        resposta = responder_automatico(text)
+                await update.message.reply_text(
+                    "Certo, qual equipamento?",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                )
+                return
 
-        await update.message.reply_text(resposta)
-        await update.message.reply_text(sugestao)
+            if "software" in text.lower():
+                context.user_data["categoria"] = "software"
+                context.user_data["step"] = "descricao"
 
-        await criar_ticket(update, "anonimo", context.user_data)
+                await update.message.reply_text(
+                    "Certo, descreva o problema em detalhes."
+                )
+                return
+
+        # =========================
+        # HARDWARE → EQUIPAMENTO
+        # =========================
+        if step == "equipamento":
+            context.user_data["dispositivo"] = text
+            context.user_data["step"] = "descricao"
+
+            await update.message.reply_text(
+                f"Certo, descreva o problema com {text}."
+            )
+            return
+
+        # =========================
+        # DESCRIÇÃO FINAL
+        # =========================
+        if step == "descricao":
+            context.user_data["descricao"] = text
+
+            sugestao = sugerir_solucao(text)
+            context.user_data["sugestao"] = sugestao
+
+            await update.message.reply_text(sugestao)
+
+            # Se simples → NÃO abre ticket ainda
+            if problema_simples(text):
+                await update.message.reply_text(
+                    "Isso pode ser resolvido com a sugestão acima. Caso não funcione, me avise 👍"
+                )
+                context.user_data["step"] = "aguardando_confirmacao"
+                return
+
+            # Se não simples → abre ticket direto
+            await criar_ticket(update, "anonimo", context.user_data)
+            context.user_data["step"] = "finalizado"
+            return
+
+        # =========================
+        # CONFIRMAÇÃO
+        # =========================
+        if step == "aguardando_confirmacao":
+            if "não" in text.lower():
+                await criar_ticket(update, "anonimo", context.user_data)
+                context.user_data["step"] = "finalizado"
+            else:
+                await update.message.reply_text("Perfeito! 👍")
+                context.user_data["step"] = "finalizado"
+
+            return
+
+        # fallback
+        await update.message.reply_text(mensagem_padrao())
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
     return app
 
+
 if __name__ == "__main__":
     app = run_bot()
     app.run_polling()
 
+
 __all__ = [
-    "responder_automatico",
+    "mensagem_padrao",
+    "sugerir_solucao",
     "criar_payload",
     "enviar_ticket",
     "criar_ticket",
-    "sugerir_solucao",
     "notificar_telegram",
+    "problema_simples",
     "run_bot"
 ]
