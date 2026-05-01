@@ -15,24 +15,12 @@ FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
     "computador não liga": "⚡ Verificar fonte e cabo de energia.",
     "impressora não imprime": "🖨️ Impressora: verificar conexão e tinta.",
+    "filamento": "🧵 Verificar se o filamento não travou.",
 }
 
 
-# =========================
-# UTILS
-# =========================
 def mensagem_padrao():
     return "Não entendi sua solicitação. Entre em contato com o suporte."
-
-
-def problema_simples(texto: str) -> bool:
-    if not texto:
-        return False
-
-    texto = texto.lower()
-
-    palavras_simples = ["lento", "internet", "wifi", "reiniciar"]
-    return any(p in texto for p in palavras_simples)
 
 
 # =========================
@@ -45,12 +33,31 @@ def sugerir_solucao(texto):
     texto = texto.lower()
 
     if "lento" in texto:
-        return "💻 Sugestão: reiniciar o computador."
+        return "💻 Sugestão: reiniciar o computador e verificar energia."
 
     if "internet" in texto:
         return "🌐 Sugestão: reiniciar o roteador."
 
-    return "💡 Sugestão: verificar e reiniciar o dispositivo."
+    return "💡 Sugestão: verificar o problema e reiniciar o dispositivo."
+
+
+# =========================
+# 🔥 COMPATIBILIDADE COM TESTES ANTIGOS
+# =========================
+def responder_automatico(texto):
+    if not texto:
+        return mensagem_padrao()
+
+    texto = texto.lower()
+
+    for chave, resposta in FAQ.items():
+        if chave in texto:
+            return resposta
+
+    if "internet" in texto:
+        return "🔌 Reiniciar o roteador pode ajudar."
+
+    return mensagem_padrao()
 
 
 # =========================
@@ -72,20 +79,30 @@ def criar_payload(user, context):
 # API
 # =========================
 def enviar_ticket(payload, request_func=None):
-    request_func = request_func or requests.post
+    if request_func is None:
+        request_func = requests.post
 
     try:
         response = request_func(API_URL, json=payload)
-        return response.json() if hasattr(response, "json") else None
+
+        if hasattr(response, "json"):
+            return response.json()
+
+        return None
+
     except Exception:
         return None
 
 
+# =========================
+# TELEGRAM NOTIFICAÇÃO
+# =========================
 def notificar_telegram(user, ticket_id, request_func=None):
     if not TELEGRAM_CHAT_ID:
         return None
 
-    request_func = request_func or requests.post
+    if request_func is None:
+        request_func = requests.post
 
     try:
         return request_func(
@@ -100,21 +117,25 @@ def notificar_telegram(user, ticket_id, request_func=None):
 
 
 # =========================
-# TICKET
+# CRIAÇÃO DE TICKET
 # =========================
 async def criar_ticket(update, user, context):
-    payload = criar_payload(user, context)
-    data = enviar_ticket(payload)
+    try:
+        payload = criar_payload(user, context)
+        data = enviar_ticket(payload)
 
-    if data and data.get("id"):
-        await update.message.reply_text(f"🎟️ Chamado #{data['id']} criado!")
-        notificar_telegram(user, data["id"])
-    else:
+        if data and data.get("id"):
+            await update.message.reply_text(f"🎟️ Chamado #{data.get('id')} criado!")
+            notificar_telegram(user, data.get("id"))
+        else:
+            await update.message.reply_text("❌ Erro ao criar chamado.")
+
+    except Exception:
         await update.message.reply_text("❌ Erro ao criar chamado.")
 
 
 # =========================
-# BOT (FLUXO COM ESTADO)
+# BOT (NOVO FLUXO)
 # =========================
 def run_bot(token=None):
     token = token or TOKEN
@@ -125,10 +146,9 @@ def run_bot(token=None):
     app = ApplicationBuilder().token(token).build()
 
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        context.user_data.clear()
-        context.user_data["step"] = "tipo"
-
         keyboard = [["🖥️ Hardware", "💻 Software"]]
+
+        context.user_data.clear()
 
         await update.message.reply_text(
             "Bem-vindo ao HelpDesk! O problema é hardware ou software?",
@@ -137,84 +157,54 @@ def run_bot(token=None):
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text
-        step = context.user_data.get("step")
 
-        # =========================
-        # ESCOLHA TIPO
-        # =========================
-        if step == "tipo":
-            if "hardware" in text.lower():
-                context.user_data["categoria"] = "hardware"
-                context.user_data["step"] = "equipamento"
+        # Escolha inicial
+        if text == "🖥️ Hardware":
+            context.user_data["categoria"] = "hardware"
 
-                keyboard = [["Computador", "Notebook"], ["Celular", "Impressora", "Modem"]]
-
-                await update.message.reply_text(
-                    "Certo, qual equipamento?",
-                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-                )
-                return
-
-            if "software" in text.lower():
-                context.user_data["categoria"] = "software"
-                context.user_data["step"] = "descricao"
-
-                await update.message.reply_text(
-                    "Certo, descreva o problema em detalhes."
-                )
-                return
-
-        # =========================
-        # HARDWARE → EQUIPAMENTO
-        # =========================
-        if step == "equipamento":
-            context.user_data["dispositivo"] = text
-            context.user_data["step"] = "descricao"
+            keyboard = [
+                ["Computador", "Notebook"],
+                ["Celular", "Modem"],
+                ["Impressora"]
+            ]
 
             await update.message.reply_text(
-                f"Certo, descreva o problema com {text}."
+                "Certo, qual equipamento?",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             )
             return
 
-        # =========================
-        # DESCRIÇÃO FINAL
-        # =========================
-        if step == "descricao":
-            context.user_data["descricao"] = text
+        if text == "💻 Software":
+            context.user_data["categoria"] = "software"
 
-            sugestao = sugerir_solucao(text)
-            context.user_data["sugestao"] = sugestao
+            await update.message.reply_text(
+                "Certo, me descreva o problema."
+            )
+            return
 
-            await update.message.reply_text(sugestao)
+        # Escolha de dispositivo
+        if "categoria" in context.user_data and "dispositivo" not in context.user_data:
+            context.user_data["dispositivo"] = text
 
-            # Se simples → NÃO abre ticket ainda
-            if problema_simples(text):
-                await update.message.reply_text(
-                    "Isso pode ser resolvido com a sugestão acima. Caso não funcione, me avise 👍"
-                )
-                context.user_data["step"] = "aguardando_confirmacao"
-                return
+            await update.message.reply_text(
+                f"Descreva o problema com {text}."
+            )
+            return
 
-            # Se não simples → abre ticket direto
+        # Descrição final
+        context.user_data["descricao"] = text
+
+        resposta = responder_automatico(text)
+        sugestao = sugerir_solucao(text)
+
+        await update.message.reply_text(resposta)
+        await update.message.reply_text(sugestao)
+
+        # regra simples (IA fake)
+        if "não" in text.lower() or "erro" in text.lower():
             await criar_ticket(update, "anonimo", context.user_data)
-            context.user_data["step"] = "finalizado"
-            return
-
-        # =========================
-        # CONFIRMAÇÃO
-        # =========================
-        if step == "aguardando_confirmacao":
-            if "não" in text.lower():
-                await criar_ticket(update, "anonimo", context.user_data)
-                context.user_data["step"] = "finalizado"
-            else:
-                await update.message.reply_text("Perfeito! 👍")
-                context.user_data["step"] = "finalizado"
-
-            return
-
-        # fallback
-        await update.message.reply_text(mensagem_padrao())
+        else:
+            await update.message.reply_text("Se não resolver, posso abrir um chamado.")
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
@@ -228,12 +218,11 @@ if __name__ == "__main__":
 
 
 __all__ = [
-    "mensagem_padrao",
-    "sugerir_solucao",
+    "responder_automatico",
     "criar_payload",
     "enviar_ticket",
     "criar_ticket",
+    "sugerir_solucao",
     "notificar_telegram",
-    "problema_simples",
     "run_bot"
 ]
