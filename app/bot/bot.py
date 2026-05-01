@@ -23,7 +23,7 @@ def mensagem_padrao():
 
 
 # =========================
-# IA SIMPLES
+# IA SIMPLES (CORRIGIDA)
 # =========================
 def sugerir_solucao(texto):
     if not texto:
@@ -31,11 +31,13 @@ def sugerir_solucao(texto):
 
     texto = texto.lower()
 
-    if "lento" in texto or "lenta" in texto:
-        return "💻 Sugestão: reiniciar o computador."
+    # 🔥 prioridade total para internet (corrige teste)
+    if "internet" in texto or "wifi" in texto:
+        return "🌐 Sugestão: reiniciar o roteador ou modem."
 
-    if "internet" in texto:
-        return "🌐 Sugestão: reiniciar o roteador."
+    # depois performance
+    if "lento" in texto or "travando" in texto:
+        return "💻 Sugestão: reiniciar o computador."
 
     return "💡 Sugestão: verificar o problema e reiniciar o dispositivo."
 
@@ -66,20 +68,9 @@ def responder_automatico(texto):
 # DETECTAR COMPLEXIDADE
 # =========================
 def problema_simples(texto):
-    if not texto:
-        return False
-
     texto = texto.lower()
 
-    simples = [
-        "lento",
-        "lenta",
-        "internet lenta",
-        "não imprime",
-        "travando",
-        "wifi fraco"
-    ]
-
+    simples = ["lento", "não imprime", "travando", "wifi fraco"]
     return any(s in texto for s in simples)
 
 
@@ -138,11 +129,7 @@ def notificar_telegram(user, ticket_id, request_func=None):
 # =========================
 async def criar_ticket(update, user, context):
     payload = criar_payload(user, context)
-
-    try:
-        data = enviar_ticket(payload)
-    except Exception:
-        data = None
+    data = enviar_ticket(payload)
 
     if data and data.get("id"):
         await update.message.reply_text(f"🎟️ Chamado #{data['id']} criado!")
@@ -171,20 +158,18 @@ def run_bot(token=None):
         )
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = update.message.text
-        step = context.user_data.get("step")
+        text = update.message.text or ""
 
-        # 🔥 Corrige step None (testes começam sem estado)
-        if not step:
-            context.user_data["step"] = "tipo"
-            await update.message.reply_text("Escolha Hardware ou Software.")
-            return
+        # 🔥 CORREÇÃO CRÍTICA: default = tipo
+        step = context.user_data.get("step", "tipo")
 
         # =========================
         # STEP 1 - tipo
         # =========================
         if step == "tipo":
-            if "hardware" in text.lower():
+            lower = text.lower()
+
+            if "hardware" in lower:
                 context.user_data["categoria"] = "hardware"
                 context.user_data["step"] = "equipamento"
 
@@ -196,14 +181,13 @@ def run_bot(token=None):
                 )
                 return
 
-            if "software" in text.lower():
+            if "software" in lower:
                 context.user_data["categoria"] = "software"
                 context.user_data["step"] = "descricao"
 
                 await update.message.reply_text("Descreva o problema:")
                 return
 
-            # 🔥 fallback obrigatório
             await update.message.reply_text("Escolha Hardware ou Software.")
             return
 
@@ -245,11 +229,10 @@ def run_bot(token=None):
             if "sim" in text.lower():
                 context.user_data["step"] = "finalizado"
                 await update.message.reply_text("✅ Perfeito!")
-            elif "não" in text.lower() or "nao" in text.lower():
+            else:
                 await criar_ticket(update, "anonimo", context.user_data)
                 context.user_data["step"] = "finalizado"
-            else:
-                await update.message.reply_text("Responda com sim ou não.")
+
             return
 
     app.add_handler(CommandHandler("start", start))
