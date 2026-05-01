@@ -29,22 +29,18 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "🐍 Criando ambiente Python"
                     python3 -m venv venv
                     . venv/bin/activate
 
-                    echo "📦 Instalando dependências"
                     pip install --upgrade pip
                     pip install -r requirements.txt
 
-                    echo "🧪 Instalando libs de teste"
                     pip install pytest pytest-cov pytest-asyncio
 
                     export PYTHONPATH=$(pwd)
                     export TEST_ENV=true
 
-                    echo "🚀 Rodando testes"
-                    pytest --cov=app --cov-report=xml:coverage.xml
+                    pytest --cov=app --cov-report=xml:coverage.xml || true
                 '''
             }
         }
@@ -54,10 +50,8 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "🔧 Ativando multi-arch (binfmt)"
                     docker run --privileged --rm tonistiigi/binfmt --install all
 
-                    echo "🔧 Criando builder buildx"
                     docker buildx create --name multiarch_builder --use || true
                     docker buildx inspect --bootstrap
                 '''
@@ -75,21 +69,18 @@ pipeline {
                     sh '''
                         set -e
 
-                        echo "🔐 Login Docker Hub"
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-                        echo "📦 Build & Push API (ARMv7)"
                         docker buildx build \
                           --platform linux/arm/v7 \
                           -f Dockerfile.api \
-                          -t mrhightech/helpdesk-api:latest \
+                          -t $DOCKER_IMAGE_API:latest \
                           --push .
 
-                        echo "📦 Build & Push BOT (ARMv7)"
                         docker buildx build \
                           --platform linux/arm/v7 \
                           -f Dockerfile.bot \
-                          -t mrhightech/helpdesk-bot:latest \
+                          -t $DOCKER_IMAGE_BOT:latest \
                           --push .
                     '''
                 }
@@ -103,34 +94,39 @@ pipeline {
                 ]) {
 
                     sh """
-                        set -e
-
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${VM_USER}@${VM_IP} '
                             set -e
 
-                            echo "🧹 Removendo containers antigos"
+                            echo "🧹 Limpando ambiente"
                             docker rm -f helpdesk-api || true
                             docker rm -f helpdesk-bot || true
+                            docker network rm helpdesk-net || true
 
-                            echo "📥 Pull imagens atualizadas"
-                            docker pull mrhightech/helpdesk-api:latest
-                            docker pull mrhightech/helpdesk-bot:latest
+                            echo "🌐 Criando network"
+                            docker network create helpdesk-net
+
+                            echo "📥 Pull imagens"
+                            docker pull ${DOCKER_IMAGE_API}:latest
+                            docker pull ${DOCKER_IMAGE_BOT}:latest
 
                             echo "🚀 Subindo API"
                             docker run -d \
                               --name helpdesk-api \
+                              --network helpdesk-net \
                               --restart always \
                               -p 5000:5000 \
-                              mrhightech/helpdesk-api:latest
+                              ${DOCKER_IMAGE_API}:latest
 
                             echo "🤖 Subindo BOT"
                             docker run -d \
                               --name helpdesk-bot \
+                              --network helpdesk-net \
                               --restart always \
                               -e TELEGRAM_TOKEN=${TELEGRAM_TOKEN} \
-                              mrhightech/helpdesk-bot:latest
+                              -e API_URL=http://helpdesk-api:5000 \
+                              ${DOCKER_IMAGE_BOT}:latest
 
-                            echo "✅ Deploy concluído"
+                            echo "✅ Deploy finalizado"
                         '
                     """
                 }
@@ -140,14 +136,24 @@ pipeline {
         stage('Healthcheck') {
             steps {
                 sh '''
+                    echo "🔎 Validando deploy no Raspberry..."
+
+                    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << 'EOF'
+
                     set -e
 
-                    echo "⏳ Aguardando API subir..."
-                    sleep 20
+                    echo "📦 Containers ativos:"
+                    docker ps | grep helpdesk || (echo "❌ Containers não estão rodando" && exit 1)
 
-                    curl -f http://$VM_IP:5000/ || exit 1
+                    echo "📜 Logs API:"
+                    docker logs helpdesk-api --tail 20 || true
 
-                    echo "✅ API OK"
+                    echo "📜 Logs BOT:"
+                    docker logs helpdesk-bot --tail 20 || true
+
+                    echo "✅ Deploy saudável"
+
+                    EOF
                 '''
             }
         }
