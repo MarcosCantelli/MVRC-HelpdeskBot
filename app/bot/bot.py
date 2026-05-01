@@ -64,17 +64,17 @@ def responder_automatico(texto):
 
 
 # =========================
-# PAYLOAD
+# PAYLOAD (FIX AQUI)
 # =========================
 def criar_payload(user, context):
     context = context or {}
 
     return {
         "user": user,
-        "description": context.get("descricao"),
-        "category": context.get("categoria"),
-        "subcategory": context.get("dispositivo"),
-        "ai_suggestion": context.get("sugestao")
+        "description": context.get("descricao") or context.get("description"),
+        "category": context.get("categoria") or context.get("category"),
+        "subcategory": context.get("dispositivo") or context.get("subcategory"),
+        "ai_suggestion": context.get("sugestao") or context.get("ai")
     }
 
 
@@ -109,7 +109,6 @@ async def criar_ticket(update, user, context):
             msg = f"🎟️ Chamado #{data.get('id')} criado!"
             await update.message.reply_text(msg)
 
-            # 🔥 Notificação para você
             if TELEGRAM_CHAT_ID:
                 try:
                     requests.post(
@@ -146,10 +145,8 @@ if __name__ == "__main__":
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text
 
-        # Guarda descrição
         context.user_data["descricao"] = text
 
-        # IA sugere solução
         sugestao = sugerir_solucao(text)
         context.user_data["sugestao"] = sugestao
 
@@ -158,7 +155,6 @@ if __name__ == "__main__":
         await update.message.reply_text(resposta)
         await update.message.reply_text(sugestao)
 
-        # Cria ticket direto (pode evoluir depois)
         await criar_ticket(update, "anonimo", context.user_data)
 
     app.add_handler(CommandHandler("start", start))
