@@ -64,7 +64,7 @@ def responder_automatico(texto):
 
 
 # =========================
-# PAYLOAD (FIX AQUI)
+# PAYLOAD
 # =========================
 def criar_payload(user, context):
     context = context or {}
@@ -98,6 +98,28 @@ def enviar_ticket(payload, request_func=None):
 
 
 # =========================
+# NOTIFICAÇÃO TELEGRAM (NOVO - TESTÁVEL)
+# =========================
+def notificar_telegram(user, ticket_id, request_func=None):
+    if not TELEGRAM_CHAT_ID:
+        return None
+
+    if request_func is None:
+        request_func = requests.post
+
+    try:
+        return request_func(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": f"🚨 Novo chamado aberto!\n👤 {user}\n🎟️ #{ticket_id}"
+            }
+        )
+    except Exception:
+        return None
+
+
+# =========================
 # CRIAÇÃO DE TICKET
 # =========================
 async def criar_ticket(update, user, context):
@@ -109,17 +131,8 @@ async def criar_ticket(update, user, context):
             msg = f"🎟️ Chamado #{data.get('id')} criado!"
             await update.message.reply_text(msg)
 
-            if TELEGRAM_CHAT_ID:
-                try:
-                    requests.post(
-                        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                        json={
-                            "chat_id": TELEGRAM_CHAT_ID,
-                            "text": f"🚨 Novo chamado aberto!\n👤 {user}\n🎟️ #{data.get('id')}"
-                        }
-                    )
-                except Exception:
-                    pass
+            # agora testável
+            notificar_telegram(user, data.get("id"))
 
         else:
             await update.message.reply_text("❌ Erro ao criar chamado.")
@@ -129,9 +142,9 @@ async def criar_ticket(update, user, context):
 
 
 # =========================
-# BOT
+# BOT (REFATORADO)
 # =========================
-if __name__ == "__main__":
+def run_bot():
     app = ApplicationBuilder().token(TOKEN).build()
 
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -160,7 +173,11 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
-    app.run_polling()
+    return app
+
+
+if __name__ == "__main__":
+    run_bot().run_polling()
 
 
 __all__ = [
@@ -168,5 +185,7 @@ __all__ = [
     "criar_payload",
     "enviar_ticket",
     "criar_ticket",
-    "sugerir_solucao"
+    "sugerir_solucao",
+    "notificar_telegram",
+    "run_bot"
 ]
