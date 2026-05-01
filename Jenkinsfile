@@ -25,6 +25,9 @@ pipeline {
         REPO_URL = 'https://github.com/MarcosCantelli/MVRC-HelpdeskBot.git'
         APP_DIR  = 'app'
         BRANCH   = 'main'
+
+        PROJECT_TYPE = 'python'
+        SONAR_PROJECT_KEY = 'helpdesk-bot'
     }
 
     stages {
