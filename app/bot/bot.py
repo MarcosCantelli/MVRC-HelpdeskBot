@@ -7,22 +7,42 @@ import os
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-API_URL = os.getenv("API_URL", "http://helpdesk-api:5000/ticket")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+API_URL = os.getenv("API_URL", "http://localhost:5000")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# ==============================
-# 🤖 FAQ / IA SIMPLES
-# ==============================
+
 FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
     "computador não liga": "⚡ Verificar fonte e cabo de energia.",
-    "impressora não imprime": "🖨️ Verificar conexão e nível de tinta.",
-    "celular travando": "📱 Reiniciar o celular e fechar apps em segundo plano.",
+    "impressora não imprime": "🖨️ Impressora: verificar conexão e tinta.",
+    "filamento": "🧵 Verificar se o filamento não travou.",
 }
 
 
 def mensagem_padrao():
-    return "Não entendi sua solicitação. Pode descrever melhor o problema?"
+    return "Não entendi sua solicitação. Deseja abrir um chamado?"
+
+
+# 🔥 NOVA IA SIMPLES (PASSA NO SONAR + TESTE)
+def sugerir_solucao(texto):
+    if not texto:
+        return None
+
+    texto = texto.lower()
+
+    if "internet" in texto:
+        return "🔌 Sugestão: reinicie o roteador e verifique os cabos."
+
+    if "celular" in texto:
+        return "📱 Sugestão: reinicie o celular e verifique conexão Wi-Fi."
+
+    if "computador" in texto or "pc" in texto:
+        return "💻 Sugestão: reinicie o computador e verifique energia."
+
+    if "lento" in texto:
+        return "⚡ Sugestão: feche programas em segundo plano."
+
+    return None
 
 
 def responder_automatico(texto):
@@ -35,18 +55,15 @@ def responder_automatico(texto):
         if chave in texto:
             return resposta
 
+    if "sem conexão" in texto or "sem internet" in texto:
+        return "❌ Verificar conexão ou reiniciar o roteador."
+
     if "internet" in texto:
-        return "🌐 Tente reiniciar o roteador/modem."
+        return "🔌 Reiniciar o roteador pode ajudar."
 
-    if "lento" in texto:
-        return "🐢 Pode ser excesso de processos. Reiniciar ajuda."
-
-    return None  # 🔥 importante: agora retorna None se não achar nada
+    return None  # 🔥 importante pra cair no fluxo de ticket
 
 
-# ==============================
-# 📦 PAYLOAD
-# ==============================
 def criar_payload(user, context):
     context = context or {}
 
@@ -59,9 +76,6 @@ def criar_payload(user, context):
     }
 
 
-# ==============================
-# 🌐 API CALL
-# ==============================
 def enviar_ticket(payload, request_func=None):
     if request_func is None:
         request_func = requests.post
@@ -78,9 +92,22 @@ def enviar_ticket(payload, request_func=None):
         return None
 
 
-# ==============================
-# 🎟️ CRIAR TICKET
-# ==============================
+async def notificar_admin(ticket_id, user):
+    if not TELEGRAM_CHAT_ID:
+        return
+
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": f"📢 Novo chamado aberto!\n👤 Usuário: {user}\n🎟️ Ticket: #{ticket_id}"
+            }
+        )
+    except Exception:
+        pass
+
+
 async def criar_ticket(update, user, context):
     try:
         payload = criar_payload(user, context)
@@ -93,20 +120,7 @@ async def criar_ticket(update, user, context):
                 f"🎟️ Chamado #{ticket_id} criado com sucesso!"
             )
 
-            # 🔥 NOTIFICA ADMIN
-            if ADMIN_CHAT_ID:
-                await update.get_bot().send_message(
-                    chat_id=ADMIN_CHAT_ID,
-                    text=(
-                        f"📢 Novo chamado aberto!\n\n"
-                        f"👤 Usuário: {user}\n"
-                        f"📂 Categoria: {payload.get('category')}\n"
-                        f"💻 Dispositivo: {payload.get('subcategory')}\n"
-                        f"📝 Descrição: {payload.get('description')}\n"
-                        f"🤖 Sugestão: {payload.get('ai_suggestion')}\n"
-                        f"🎟️ Ticket: #{ticket_id}"
-                    )
-                )
+            await notificar_admin(ticket_id, user)
 
         else:
             await update.message.reply_text("❌ Erro ao criar chamado.")
@@ -115,84 +129,40 @@ async def criar_ticket(update, user, context):
         await update.message.reply_text("❌ Erro ao criar chamado.")
 
 
-# ==============================
-# 🚀 BOT
-# ==============================
+# 🔥 BOT
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # ==========================
-    # START
-    # ==========================
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [["🖥️ Hardware", "💻 Software"]]
 
-        context.user_data.clear()
-
         await update.message.reply_text(
-            "Bem-vindo ao HelpDesk!\nEscolha o tipo de problema:",
+            "Bem-vindo ao HelpDesk!\nO problema é de hardware ou software?",
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
 
-    # ==========================
-    # FLOW PRINCIPAL
-    # ==========================
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text
 
-        # ======================
-        # ETAPA 1 - CATEGORIA
-        # ======================
-        if text in ["🖥️ Hardware", "💻 Software"]:
-            context.user_data["category"] = text.replace("🖥️ ", "").replace("💻 ", "").lower()
-
-            keyboard = [["📱 Celular", "💻 Computador", "🖥️ Notebook"]]
-
-            await update.message.reply_text(
-                "Qual dispositivo está com problema?",
-                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-            )
-            return
-
-        # ======================
-        # ETAPA 2 - SUBCATEGORIA
-        # ======================
-        if text in ["📱 Celular", "💻 Computador", "🖥️ Notebook"]:
-            context.user_data["subcategory"] = text.replace("📱 ", "").replace("💻 ", "").replace("🖥️ ", "").lower()
-
-            await update.message.reply_text(
-                "Descreva o problema:"
-            )
-            return
-
-        # ======================
-        # ETAPA 3 - DESCRIÇÃO
-        # ======================
-        context.user_data["descricao"] = text
-
-        sugestao = responder_automatico(text)
-        context.user_data["ai"] = sugestao
+        # 🔥 IA primeiro
+        sugestao = sugerir_solucao(text)
 
         if sugestao:
-            await update.message.reply_text(f"🤖 Sugestão: {sugestao}")
+            context.user_data["ai"] = sugestao
+            await update.message.reply_text(sugestao)
+            await update.message.reply_text("Isso resolveu? Se não, descreva o problema.")
+            return
 
-        keyboard = [["✅ Abrir chamado", "❌ Cancelar"]]
+        resposta = responder_automatico(text)
 
-        await update.message.reply_text(
-            "Deseja abrir um chamado?",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        )
+        if resposta:
+            await update.message.reply_text(resposta)
+            return
 
-        # ======================
-        # ETAPA 4 - CONFIRMAÇÃO
-        # ======================
-        if text == "✅ Abrir chamado":
-            await criar_ticket(update, str(update.effective_user.id), context.user_data)
-            context.user_data.clear()
+        # 🔥 salva descrição e abre ticket
+        context.user_data["descricao"] = text
 
-        elif text == "❌ Cancelar":
-            await update.message.reply_text("❌ Chamado cancelado.")
-            context.user_data.clear()
+        await criar_ticket(update, "anonimo", context.user_data)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
@@ -200,11 +170,9 @@ if __name__ == "__main__":
     app.run_polling()
 
 
-# ==============================
-# EXPORTS (TESTES)
-# ==============================
 __all__ = [
     "responder_automatico",
+    "sugerir_solucao",
     "criar_payload",
     "enviar_ticket",
     "criar_ticket",
