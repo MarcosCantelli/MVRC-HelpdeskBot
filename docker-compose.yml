@@ -9,6 +9,8 @@ services:
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
     restart: always
+    networks:
+      - helpdesk-net
 
   bot:
     image: mrhightech/helpdesk-bot:latest
@@ -17,5 +19,12 @@ services:
       - api
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - API_URL=http://helpdesk-api:5000
+      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
+      - API_URL=http://helpdesk-api:5000/ticket
     restart: always
+    networks:
+      - helpdesk-net
+
+networks:
+  helpdesk-net:
+    driver: bridge

@@ -118,7 +118,8 @@ pipeline {
         stage('Deploy (Raspberry - Docker Compose)') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN')
+                    string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN'),
+                    string(credentialsId: 'telegram-admin-id', variable: 'ADMIN_CHAT_ID')
                 ]) {
                     sh '''
                         set -e
@@ -144,7 +145,8 @@ docker pull $DOCKER_IMAGE_BOT:latest
 
 echo "📦 Subindo com docker-compose"
 
-export TELEGRAM_TOKEN=$TELEGRAM_TOKEN
+export TELEGRAM_TOKEN="$TELEGRAM_TOKEN"
+export ADMIN_CHAT_ID="$ADMIN_CHAT_ID"
 
 docker compose down || true
 docker compose up -d

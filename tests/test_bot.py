@@ -1,69 +1,30 @@
 import pytest
-from unittest.mock import AsyncMock, patch
-from app.bot.bot import responder_automatico, criar_payload, criar_ticket, enviar_ticket
+from unittest.mock import patch
+from app.bot.bot import sugerir_solucao, criar_payload, enviar_ticket
 
 
 # =========================
-# TESTES BOT
+# TESTES IA (SUGESTÕES)
 # =========================
 
-def test_internet_lenta():
-    resp = responder_automatico("internet lenta")
+def test_sugestao_internet():
+    resp = sugerir_solucao("internet lenta")
+    assert "roteador" in resp.lower() or "modem" in resp.lower()
+
+
+def test_sugestao_lento():
+    resp = sugerir_solucao("computador lento")
     assert "reiniciar" in resp.lower()
 
 
-def test_sem_conexao():
-    resp = responder_automatico("sem conexão")
+def test_sugestao_generica():
+    resp = sugerir_solucao("qualquer coisa aleatória")
     assert resp is not None
 
 
-def test_texto_desconhecido():
-    resp = responder_automatico("qualquer coisa")
-    assert "suporte" in resp.lower()
-
-
-def test_texto_vazio():
-    resp = responder_automatico("")
+def test_sugestao_none():
+    resp = sugerir_solucao(None)
     assert resp is not None
-
-
-def test_texto_none():
-    resp = responder_automatico(None)
-    assert resp is not None
-
-
-def test_faq_impressora():
-    resp = responder_automatico("impressora não imprime")
-    assert "impressora" in resp.lower()
-
-
-def test_faq_computador():
-    resp = responder_automatico("computador não liga")
-    assert "energia" in resp.lower()
-
-
-def test_faq_filamento():
-    resp = responder_automatico("problema com filamento")
-    assert "filamento" in resp.lower()
-
-
-def test_internet_generico():
-    resp = responder_automatico("internet caiu geral")
-    assert resp is not None
-
-
-# 🔥 CORREÇÃO AQUI
-def test_enviar_ticket_mock():
-    def fake_post(url, json):
-        return type("Resp", (), {
-            "json": lambda self: {"id": 123}
-        })()
-
-    payload = {"user": "teste"}
-
-    resp = enviar_ticket(payload, request_func=fake_post)
-
-    assert resp["id"] == 123
 
 
 # =========================
@@ -73,9 +34,9 @@ def test_enviar_ticket_mock():
 def test_criar_payload():
     context = {
         "descricao": "teste",
-        "category": "hardware",
-        "subcategory": "pc",
-        "ai": "reiniciar"
+        "categoria": "hardware",
+        "dispositivo": "pc",
+        "sugestao": "reiniciar"
     }
 
     payload = criar_payload("user1", context)
@@ -83,35 +44,30 @@ def test_criar_payload():
     assert payload["user"] == "user1"
     assert payload["description"] == "teste"
     assert payload["category"] == "hardware"
+    assert payload["subcategory"] == "pc"
 
 
 # =========================
-# TESTES CRIAR TICKET
+# TESTES API
 # =========================
 
-@pytest.mark.asyncio
-@patch("app.bot.bot.requests.post")
-async def test_criar_ticket_sucesso(mock_post):
-    mock_post.return_value.json.return_value = {"id": 123}
+def test_enviar_ticket_mock():
+    def fake_post(url, json):
+        return type("Resp", (), {
+            "json": lambda self: {"id": 999}
+        })()
 
-    update = AsyncMock()
-    update.message.reply_text = AsyncMock()
+    with patch("app.bot.bot.requests.post", fake_post):
+        resp = enviar_ticket({"user": "teste"})
 
-    context = {"descricao": "teste"}
-
-    await criar_ticket(update, "user1", context)
-
-    update.message.reply_text.assert_called_once()
+    assert resp["id"] == 999
 
 
-@pytest.mark.asyncio
-@patch("app.bot.bot.requests.post", side_effect=Exception("erro"))
-async def test_criar_ticket_erro(mock_post):
-    update = AsyncMock()
-    update.message.reply_text = AsyncMock()
+def test_enviar_ticket_erro():
+    def fake_post(url, json):
+        raise Exception("erro")
 
-    context = {"descricao": "teste"}
+    with patch("app.bot.bot.requests.post", fake_post):
+        resp = enviar_ticket({"user": "teste"})
 
-    await criar_ticket(update, "user1", context)
-
-    update.message.reply_text.assert_called_once()
+    assert resp is None
