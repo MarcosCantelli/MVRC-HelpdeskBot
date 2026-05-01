@@ -20,4 +20,5 @@ COPY . .
 
 USER appuser
 
+# 🔥 CORREÇÃO AQUI
 CMD ["python", "-m", "app.bot.bot"]
