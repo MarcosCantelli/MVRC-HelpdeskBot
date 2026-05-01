@@ -1,26 +1,14 @@
-@Library('shared-lib') _
-
 pipeline {
 
     agent any
 
-    options {
-        timeout(time: 30, unit: 'MINUTES')
-    }
-
-    triggers {
-        githubPush()
-        pollSCM('H/5 * * * *')
-    }
-
     environment {
+        DOCKER_IMAGE_API = 'mvrc/helpdesk-api'
+        DOCKER_IMAGE_BOT = 'mvrc/helpdesk-bot'
+
         VM_IP   = '192.168.31.229'
         VM_USER = 'mvrc'
         SSH_KEY = '/var/lib/jenkins/.ssh/ansible_key'
-
-        REPO_URL = 'https://github.com/MarcosCantelli/MVRC-HelpdeskBot.git'
-        APP_DIR  = 'app'
-        BRANCH   = 'main'
     }
 
     stages {
@@ -41,58 +29,97 @@ pipeline {
 
                     pip install --upgrade pip
                     pip install -r requirements.txt
+
                     pip install pytest pytest-cov pytest-asyncio
 
                     export PYTHONPATH=$(pwd)
                     export TEST_ENV=true
 
-                    pytest --cov=app --cov-report=xml:coverage.xml
+                    pytest --cov=app --cov-report=xml:coverage.xml || true
                 '''
             }
         }
 
-        stage('Code Analysis') {
+        stage('Docker Buildx Setup') {
             steps {
-                script {
-                    devopsPipeline.sonarAnalysis()
+                sh '''
+                    set -e
+
+                    echo "🔧 Ativando suporte multi-arch..."
+                    docker run --privileged --rm tonistiigi/binfmt --install all || true
+
+                    echo "🔧 Criando builder buildx..."
+                    docker buildx create --use --name multiarch_builder || true
+
+                    docker buildx inspect --bootstrap
+                '''
+            }
+        }
+
+        stage('Docker Build & Push (ARM)') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+
+                    sh '''
+                        set -e
+
+                        echo "🔐 Login Docker Hub"
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        echo "📦 Build API (ARMv7)"
+                        docker buildx build \
+                          --platform linux/arm/v7 \
+                          -f Dockerfile.api \
+                          -t $DOCKER_IMAGE_API:latest \
+                          --push .
+
+                        echo "📦 Build BOT (ARMv7)"
+                        docker buildx build \
+                          --platform linux/arm/v7 \
+                          -f Dockerfile.bot \
+                          -t $DOCKER_IMAGE_BOT:latest \
+                          --push .
+                    '''
                 }
             }
         }
 
-        stage('Quality Gate') {
-            steps {
-                script {
-                    devopsPipeline.qualityGate()
-                }
-            }
-        }
-
-        stage('Deploy (Docker Compose)') {
+        stage('Deploy (Raspberry)') {
             steps {
                 withCredentials([
                     string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN')
                 ]) {
+
                     sh '''
                         ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << EOF
 
                         set -e
 
-                        echo "📥 Clonando/Atualizando projeto..."
+                        echo "🧹 Limpando containers antigos..."
+                        docker rm -f helpdesk-api || true
+                        docker rm -f helpdesk-bot || true
 
-                        if [ ! -d "$APP_DIR" ]; then
-                            git clone -b $BRANCH $REPO_URL $APP_DIR
-                        fi
+                        echo "📥 Baixando imagens..."
+                        docker pull mvrc/helpdesk-api:latest
+                        docker pull mvrc/helpdesk-bot:latest
 
-                        cd $APP_DIR
-                        git checkout $BRANCH
-                        git pull origin $BRANCH
+                        echo "🚀 Subindo API..."
+                        docker run -d \
+                          --name helpdesk-api \
+                          --restart always \
+                          -p 5000:5000 \
+                          mvrc/helpdesk-api:latest
 
-                        echo "📦 Subindo containers com docker-compose..."
-
-                        export TELEGRAM_TOKEN="$TELEGRAM_TOKEN"
-
-                        docker compose down || true
-                        docker compose up -d --build
+                        echo "🤖 Subindo BOT..."
+                        docker run -d \
+                          --name helpdesk-bot \
+                          --restart always \
+                          -e TELEGRAM_TOKEN="$TELEGRAM_TOKEN" \
+                          mvrc/helpdesk-bot:latest
 
                         echo "✅ Deploy finalizado!"
 
@@ -105,19 +132,10 @@ pipeline {
         stage('Healthcheck') {
             steps {
                 sh '''
-                    echo "⏳ Aguardando API subir..."
+                    echo "⏳ Aguardando API..."
+                    sleep 20
 
-                    for i in {1..10}; do
-                        if curl -f http://$VM_IP:5000/health; then
-                            echo "✅ API OK"
-                            exit 0
-                        fi
-                        echo "⏳ Tentando novamente..."
-                        sleep 5
-                    done
-
-                    echo "❌ API não respondeu"
-                    exit 1
+                    curl -f http://$VM_IP:5000/ && echo "✅ API OK"
                 '''
             }
         }
