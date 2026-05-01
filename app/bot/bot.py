@@ -10,7 +10,6 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 API_URL = os.getenv("API_URL", "http://localhost:5000")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-
 FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
     "computador não liga": "⚡ Verificar fonte e cabo de energia.",
@@ -23,7 +22,7 @@ def mensagem_padrao():
 
 
 # =========================
-# IA SIMPLES (CORRIGIDA)
+# IA SIMPLES
 # =========================
 def sugerir_solucao(texto):
     if not texto:
@@ -31,11 +30,9 @@ def sugerir_solucao(texto):
 
     texto = texto.lower()
 
-    # 🔥 prioridade total para internet (corrige teste)
     if "internet" in texto or "wifi" in texto:
         return "🌐 Sugestão: reiniciar o roteador ou modem."
 
-    # depois performance
     if "lento" in texto or "travando" in texto:
         return "💻 Sugestão: reiniciar o computador."
 
@@ -65,12 +62,23 @@ def responder_automatico(texto):
 
 
 # =========================
-# DETECTAR COMPLEXIDADE
+# DETECTAR COMPLEXIDADE (FIX)
 # =========================
 def problema_simples(texto):
+    if not texto:
+        return False
+
     texto = texto.lower()
 
-    simples = ["lento", "não imprime", "travando", "wifi fraco"]
+    simples = [
+        "lento",
+        "lenta",
+        "não imprime",
+        "travando",
+        "wifi fraco",
+        "internet lenta"
+    ]
+
     return any(s in texto for s in simples)
 
 
@@ -125,16 +133,19 @@ def notificar_telegram(user, ticket_id, request_func=None):
 
 
 # =========================
-# CRIAÇÃO DE TICKET
+# CRIAÇÃO DE TICKET (FIX)
 # =========================
 async def criar_ticket(update, user, context):
-    payload = criar_payload(user, context)
-    data = enviar_ticket(payload)
+    try:
+        payload = criar_payload(user, context)
+        data = enviar_ticket(payload)
 
-    if data and data.get("id"):
-        await update.message.reply_text(f"🎟️ Chamado #{data['id']} criado!")
-        notificar_telegram(user, data["id"])
-    else:
+        if data and data.get("id"):
+            await update.message.reply_text(f"🎟️ Chamado #{data['id']} criado!")
+            notificar_telegram(user, data["id"])
+        else:
+            await update.message.reply_text("❌ Erro ao criar chamado.")
+    except Exception:
         await update.message.reply_text("❌ Erro ao criar chamado.")
 
 
@@ -159,13 +170,8 @@ def run_bot(token=None):
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text or ""
-
-        # 🔥 CORREÇÃO CRÍTICA: default = tipo
         step = context.user_data.get("step", "tipo")
 
-        # =========================
-        # STEP 1 - tipo
-        # =========================
         if step == "tipo":
             lower = text.lower()
 
@@ -191,9 +197,6 @@ def run_bot(token=None):
             await update.message.reply_text("Escolha Hardware ou Software.")
             return
 
-        # =========================
-        # STEP 2 - equipamento
-        # =========================
         if step == "equipamento":
             context.user_data["dispositivo"] = text
             context.user_data["step"] = "descricao"
@@ -201,9 +204,6 @@ def run_bot(token=None):
             await update.message.reply_text(f"Descreva o problema no {text}:")
             return
 
-        # =========================
-        # STEP 3 - descricao
-        # =========================
         if step == "descricao":
             context.user_data["descricao"] = text
 
@@ -222,9 +222,6 @@ def run_bot(token=None):
 
             return
 
-        # =========================
-        # STEP 4 - confirmação
-        # =========================
         if step == "aguardando_confirmacao":
             if "sim" in text.lower():
                 context.user_data["step"] = "finalizado"
@@ -244,14 +241,3 @@ def run_bot(token=None):
 if __name__ == "__main__":
     app = run_bot()
     app.run_polling()
-
-
-__all__ = [
-    "responder_automatico",
-    "criar_payload",
-    "enviar_ticket",
-    "criar_ticket",
-    "sugerir_solucao",
-    "notificar_telegram",
-    "run_bot"
-]
