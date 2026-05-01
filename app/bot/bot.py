@@ -7,7 +7,7 @@ import os
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-API_URL = os.getenv("API_URL", "http://helpdesk-api:5000/ticket")
+API_URL = os.getenv("API_URL", "http://localhost:5000")
 
 FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
