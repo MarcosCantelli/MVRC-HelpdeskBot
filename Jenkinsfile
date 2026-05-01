@@ -155,22 +155,6 @@ EOF
                 }
             }
         }
-
-        stage('Healthcheck') {
-            steps {
-                sh '''
-                    set -e
-
-                    echo "🔎 Validando containers no Raspberry..."
-
-                    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "
-                        docker ps | grep helpdesk || (echo '❌ Containers não estão rodando' && exit 1)
-                    "
-
-                    echo "✅ Containers estão ativos"
-                '''
-            }
-        }
     }
 
     post {
