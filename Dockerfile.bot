@@ -20,4 +20,4 @@ COPY . .
 
 USER appuser
 
-CMD ["python", "-m", "app.bot.main"]
+CMD ["python", "-m", "app.bot.bot"]

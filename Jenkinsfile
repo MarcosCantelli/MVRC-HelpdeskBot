@@ -93,21 +93,24 @@ pipeline {
                     string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN')
                 ]) {
 
-                    sh """
-                        ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${VM_USER}@${VM_IP} '
+                    sh '''
+                        set -e
+
+                        echo "🚀 Deploy no Raspberry..."
+
+                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << EOF
                             set -e
 
                             echo "🧹 Limpando ambiente"
                             docker rm -f helpdesk-api || true
                             docker rm -f helpdesk-bot || true
-                            docker network rm helpdesk-net || true
 
                             echo "🌐 Criando network"
-                            docker network create helpdesk-net
+                            docker network create helpdesk-net || true
 
                             echo "📥 Pull imagens"
-                            docker pull ${DOCKER_IMAGE_API}:latest
-                            docker pull ${DOCKER_IMAGE_BOT}:latest
+                            docker pull '"$DOCKER_IMAGE_API"':latest
+                            docker pull '"$DOCKER_IMAGE_BOT"':latest
 
                             echo "🚀 Subindo API"
                             docker run -d \
@@ -115,20 +118,20 @@ pipeline {
                               --network helpdesk-net \
                               --restart always \
                               -p 5000:5000 \
-                              ${DOCKER_IMAGE_API}:latest
+                              '"$DOCKER_IMAGE_API"':latest
 
                             echo "🤖 Subindo BOT"
                             docker run -d \
                               --name helpdesk-bot \
                               --network helpdesk-net \
                               --restart always \
-                              -e TELEGRAM_TOKEN=${TELEGRAM_TOKEN} \
+                              -e TELEGRAM_TOKEN='"$TELEGRAM_TOKEN"' \
                               -e API_URL=http://helpdesk-api:5000 \
-                              ${DOCKER_IMAGE_BOT}:latest
+                              '"$DOCKER_IMAGE_BOT"':latest
 
                             echo "✅ Deploy finalizado"
-                        '
-                    """
+EOF
+                    '''
                 }
             }
         }
@@ -136,24 +139,24 @@ pipeline {
         stage('Healthcheck') {
             steps {
                 sh '''
+                    set -e
+
                     echo "🔎 Validando deploy no Raspberry..."
 
                     ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << 'EOF'
+                        set -e
 
-                    set -e
+                        echo "📦 Containers ativos:"
+                        docker ps | grep helpdesk || (echo "❌ Containers não estão rodando" && exit 1)
 
-                    echo "📦 Containers ativos:"
-                    docker ps | grep helpdesk || (echo "❌ Containers não estão rodando" && exit 1)
+                        echo "🌐 Testando API internamente..."
+                        docker exec helpdesk-api curl -f http://localhost:5000/ || (echo "❌ API não respondeu" && exit 1)
 
-                    echo "📜 Logs API:"
-                    docker logs helpdesk-api --tail 20 || true
+                        echo "🤖 Logs do BOT:"
+                        docker logs helpdesk-bot --tail 20 || true
 
-                    echo "📜 Logs BOT:"
-                    docker logs helpdesk-bot --tail 20 || true
-
-                    echo "✅ Deploy saudável"
-
-                    EOF
+                        echo "✅ Deploy saudável"
+EOF
                 '''
             }
         }
