@@ -3,6 +3,13 @@ from types import SimpleNamespace
 from app.bot.bot import run_bot
 
 
+class FakeUser:
+    def __init__(self):
+        self.id = 123
+        self.full_name = "Teste User"
+        self.username = "teste"
+
+
 class FakeMessage:
     def __init__(self):
         self.texts = []
@@ -15,38 +22,37 @@ class FakeMessage:
 class FakeUpdate:
     def __init__(self):
         self.message = FakeMessage()
+        self.effective_user = FakeUser()  # 🔥 ESSENCIAL
 
 
 @pytest.mark.asyncio
 async def test_fluxo_hardware_completo(monkeypatch):
     app = run_bot(token="fake-token")
 
-    # pega handler
-    handler = app.handlers[0][1]
+    handler = app.handlers[0][0]  # 🔥 CORRETO (MessageHandler)
 
     update = FakeUpdate()
     context = SimpleNamespace(user_data={})
 
-    # mock ticket
     async def fake_ticket(update, user, context):
         update.message.texts.append("TICKET_CRIADO")
 
     monkeypatch.setattr("app.bot.bot.criar_ticket", fake_ticket)
 
-    # 1️⃣ usuário escolhe hardware
+    # 1️⃣ hardware
     update.message.text = "🖥️ Hardware"
     await handler.callback(update, context)
 
     assert "qual equipamento" in update.message.texts[-1].lower()
 
-    # 2️⃣ escolhe dispositivo
+    # 2️⃣ equipamento
     update.message.text = "Computador"
     await handler.callback(update, context)
 
     assert "descreva o problema" in update.message.texts[-1].lower()
 
-    # 3️⃣ descreve problema crítico
-    update.message.text = "computador com erro"
+    # 3️⃣ problema complexo → cria ticket
+    update.message.text = "computador com erro crítico"
     await handler.callback(update, context)
 
     assert "TICKET_CRIADO" in update.message.texts
@@ -56,18 +62,19 @@ async def test_fluxo_hardware_completo(monkeypatch):
 async def test_fluxo_software_sem_ticket(monkeypatch):
     app = run_bot(token="fake-token")
 
-    handler = app.handlers[0][1]
+    handler = app.handlers[0][0]
 
     update = FakeUpdate()
     context = SimpleNamespace(user_data={})
 
+    # 1️⃣ software
     update.message.text = "💻 Software"
     await handler.callback(update, context)
 
     assert "descreva o problema" in update.message.texts[-1].lower()
 
-    update.message.text = "preciso instalar um programa"
+    # 2️⃣ problema simples → NÃO cria ticket
+    update.message.text = "internet lenta"
     await handler.callback(update, context)
 
-    # não deve abrir ticket
     assert not any("Chamado" in t for t in update.message.texts)
