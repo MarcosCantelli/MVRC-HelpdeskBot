@@ -29,7 +29,9 @@ class FakeUpdate:
 async def test_fluxo_hardware_completo(monkeypatch):
     app = run_bot(token="fake-token")
 
-    handler = app.handlers[0][0]  # 🔥 CORRETO (MessageHandler)
+    # 🔥 Encontra o MessageHandler (é o último na lista de handlers)
+    message_handlers = [h for h in app.handlers[0] if h.__class__.__name__ == "MessageHandler"]
+    handler = message_handlers[0]
 
     update = FakeUpdate()
     context = SimpleNamespace(user_data={})
@@ -62,7 +64,9 @@ async def test_fluxo_hardware_completo(monkeypatch):
 async def test_fluxo_software_sem_ticket(monkeypatch):
     app = run_bot(token="fake-token")
 
-    handler = app.handlers[0][0]
+    # 🔥 Encontra o MessageHandler
+    message_handlers = [h for h in app.handlers[0] if h.__class__.__name__ == "MessageHandler"]
+    handler = message_handlers[0]
 
     update = FakeUpdate()
     context = SimpleNamespace(user_data={})
