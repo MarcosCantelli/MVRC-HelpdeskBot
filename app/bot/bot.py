@@ -76,16 +76,21 @@ def responder_automatico(texto):
 
     texto = texto.lower()
 
-    # 🔥 REGRA MAIS ESPECÍFICA PRIMEIRO (CORREÇÃO DO CI)
-    if "sem conexão" in texto or "sem internet" in texto:
-        return "❌ Verificar conexão ou reiniciar o roteador."
+    # ✅ NOVO: tratamento específico exigido pelos testes
+    if "sem conexão" in texto:
+        return "❌ Verificar conexão com a internet e cabos de rede."
 
+    if "conexão" in texto and "internet" in texto:
+        return "🌐 Problema de conexão detectado. Verifique sua conexão com a internet."
+
+    # FAQ primeiro
     for chave, resposta in FAQ.items():
         if chave in texto:
             return resposta
 
+    # fallback inteligente
     if "internet" in texto:
-        return "🔌 Reiniciar o roteador pode ajudar."
+        return "🔌 Problema de conexão. Reiniciar o roteador pode ajudar."
 
     return mensagem_padrao()
 
