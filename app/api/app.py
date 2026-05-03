@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 import traceback
 from typing import Dict, Any, Tuple
+from datetime import datetime
+from sqlalchemy import func
 
 load_dotenv()
 
@@ -13,14 +15,27 @@ app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
 
 
 # ==============================
-# 🔥 INIT DB (PROTEGIDO)
+# 🔥 INIT DB
 # ==============================
 try:
     Base.metadata.create_all(bind=engine)
     print("✅ Banco conectado com sucesso")
-except Exception as e:
+except Exception:
     print("❌ Erro ao conectar no banco:")
     traceback.print_exc()
+
+
+# ==============================
+# 🔧 GERAR CÓDIGO DO TICKET
+# ==============================
+def gerar_ticket_code(db, category):
+    ano = datetime.now().year
+    prefixo = "HW" if category == "hardware" else "SW"
+
+    total = db.query(func.count(Ticket.id)).scalar() or 0
+    numero = str(total + 1).zfill(3)
+
+    return f"TK{prefixo}{ano}{numero}"
 
 
 # ==============================
@@ -36,7 +51,10 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     db = SessionLocal()
 
     try:
+        ticket_code = gerar_ticket_code(db, data.get("category"))
+
         ticket = Ticket(
+            ticket_code=ticket_code,
             user=data["user"],
             category=data.get("category"),
             subcategory=data.get("subcategory"),
@@ -49,18 +67,18 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         db.commit()
         db.refresh(ticket)
 
-        print("✅ Ticket criado:", ticket.id)
+        print("✅ Ticket criado:", ticket.ticket_code)
 
         return {
             "id": ticket.id,
+            "ticket_code": ticket.ticket_code,
             "status": ticket.status
         }, 201
 
     except Exception:
         db.rollback()
         print("🔥 ERRO COMPLETO AO CRIAR TICKET:")
-        traceback.print_exc()  # 🔥 AGORA MOSTRA O ERRO REAL
-
+        traceback.print_exc()
         return {"error": "erro interno"}, 500
 
     finally:
