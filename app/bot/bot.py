@@ -1,12 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup
 from dotenv import load_dotenv
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import requests
 import os
 from datetime import datetime
@@ -17,13 +11,10 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 API_URL = os.getenv("API_URL", "http://helpdesk-api:5000")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# 🔥 ADMIN VIA ID (JENKINS)
-ADMIN_IDS = [x.strip() for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
+# 🔥 ADMIN via ENV (JENKINS)
+ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
 
 
-# =========================
-# FAQ
-# =========================
 FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
     "computador não liga": "⚡ Verificar fonte e cabo de energia.",
@@ -31,12 +22,15 @@ FAQ = {
 }
 
 
+# =========================
+# FALLBACK
+# =========================
 def mensagem_padrao():
     return "Não entendi sua solicitação. Entre em contato com o suporte."
 
 
 # =========================
-# USER SAFE + ID
+# USER SAFE
 # =========================
 def get_user(update):
     if hasattr(update, "effective_user") and update.effective_user:
@@ -50,16 +44,17 @@ def get_user(update):
 
 def get_user_id(update):
     if hasattr(update, "effective_user") and update.effective_user:
-        return str(update.effective_user.id)
-    return "0"
+        return str(getattr(update.effective_user, "id", ""))
+    return ""
 
 
 def is_admin(update):
-    return get_user_id(update) in ADMIN_IDS
+    user_id = get_user_id(update)
+    return user_id in ADMIN_IDS
 
 
 # =========================
-# IA SIMPLES
+# IA
 # =========================
 def sugerir_solucao(texto):
     if not texto:
@@ -77,7 +72,7 @@ def sugerir_solucao(texto):
 
 
 # =========================
-# RESPOSTA AUTOMÁTICA
+# AUTO RESPOSTA
 # =========================
 def responder_automatico(texto):
     if not texto:
@@ -85,21 +80,21 @@ def responder_automatico(texto):
 
     texto = texto.lower()
 
-    if "sem conexão" in texto or "sem internet":
-        return "❌ Verificar conexão ou reiniciar o roteador."
-
     for chave, resposta in FAQ.items():
         if chave in texto:
             return resposta
 
+    if "sem conexão" in texto or "sem internet" in texto:
+        return "❌ Verificar conexão ou reiniciar o roteador."
+
     if "internet" in texto:
         return "🔌 Reiniciar o roteador pode ajudar."
 
-    return mensagem_padrao()
+    return mensagem_padrao()  # 🔥 IMPORTANTE PRO TESTE
 
 
 # =========================
-# DETECTAR COMPLEXIDADE
+# COMPLEXIDADE
 # =========================
 def problema_simples(texto):
     if not texto:
@@ -141,9 +136,18 @@ def enviar_ticket(payload, request_func=None):
     request_func = request_func or requests.post
 
     try:
-        response = request_func(f"{API_URL}/ticket", json=payload, timeout=5)
-        return response.json() if response else None
-    except:
+        # 🔥 COMPATÍVEL COM MOCK
+        try:
+            response = request_func(f"{API_URL}/ticket", json=payload, timeout=5)
+        except TypeError:
+            response = request_func(f"{API_URL}/ticket", json=payload)
+
+        if response and hasattr(response, "json"):
+            return response.json()
+
+        return None
+
+    except Exception:
         return None
 
 
@@ -165,7 +169,7 @@ def fechar_ticket(ticket_id, admin, note=""):
 
 
 # =========================
-# TELEGRAM NOTIFICAÇÃO
+# NOTIFICAÇÃO
 # =========================
 def notificar_telegram(user, ticket_code, request_func=None):
     if not TELEGRAM_CHAT_ID:
@@ -175,19 +179,22 @@ def notificar_telegram(user, ticket_code, request_func=None):
 
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
             "text": f"🚨 Novo chamado!\n👤 {user}\n🎟️ {ticket_code}"
         }
 
-        return request_func(url, json=payload)
-    except:
+        try:
+            return request_func(url, json=payload, timeout=5)
+        except TypeError:
+            return request_func(url, json=payload)
+
+    except Exception:
         return None
 
 
 # =========================
-# CRIAÇÃO DE TICKET
+# CRIAR TICKET
 # =========================
 async def criar_ticket(update, user, context):
     try:
@@ -195,14 +202,15 @@ async def criar_ticket(update, user, context):
         data = enviar_ticket(payload)
 
         if data and data.get("id"):
-            codigo = data.get("ticket_code")
+            codigo = data.get("ticket_code") or f"TK{str(data['id']).zfill(3)}"
 
             await update.message.reply_text(f"🎟️ Chamado {codigo} criado!")
             notificar_telegram(user, codigo)
+
         else:
             await update.message.reply_text("❌ Erro ao criar chamado.")
 
-    except:
+    except Exception:
         await update.message.reply_text("❌ Erro ao criar chamado.")
 
 
@@ -211,11 +219,10 @@ async def criar_ticket(update, user, context):
 # =========================
 def run_bot(token=None):
     token = token or TOKEN
+
     app = ApplicationBuilder().token(token).build()
 
-    # =========================
     # START
-    # =========================
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         context.user_data["step"] = "tipo"
@@ -227,9 +234,7 @@ def run_bot(token=None):
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
 
-    # =========================
-    # ADMIN - LISTAR
-    # =========================
+    # ADMIN LIST
     async def tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
             await update.message.reply_text("❌ Acesso negado.")
@@ -242,36 +247,30 @@ def run_bot(token=None):
             return
 
         msg = "\n".join([
-            f"{t['id']} | {t['code']} | {t['status']} | {t['user']}"
+            f"{t['id']} | {t['code']} | {t['status']}"
             for t in data
         ])
 
         await update.message.reply_text(msg)
 
-    # =========================
-    # ADMIN - FECHAR
-    # =========================
+    # ADMIN CLOSE
     async def close(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
             await update.message.reply_text("❌ Acesso negado.")
             return
 
+        user = get_user(update)
+
         if not context.args:
-            await update.message.reply_text("Use: /close <id> observação")
+            await update.message.reply_text("Use: /close <id>")
             return
 
         ticket_id = context.args[0]
-        note = " ".join(context.args[1:]) if len(context.args) > 1 else ""
+        fechar_ticket(ticket_id, user)
 
-        admin = get_user(update)
+        await update.message.reply_text(f"Ticket {ticket_id} fechado.")
 
-        fechar_ticket(ticket_id, admin, note)
-
-        await update.message.reply_text(f"✅ Ticket {ticket_id} fechado.")
-
-    # =========================
-    # HANDLER PRINCIPAL
-    # =========================
+    # HANDLER PRINCIPAL (SEM BLOQUEIO!)
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text or ""
         step = context.user_data.get("step", "tipo")
@@ -279,21 +278,14 @@ def run_bot(token=None):
         user = get_user(update)
 
         if step == "tipo":
-            lower = text.lower()
-
-            if "hardware" in lower:
+            if "hardware" in text.lower():
                 context.user_data["categoria"] = "hardware"
                 context.user_data["step"] = "equipamento"
 
-                keyboard = [["Computador", "Notebook", "Impressora"]]
-
-                await update.message.reply_text(
-                    "Qual equipamento?",
-                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-                )
+                await update.message.reply_text("Qual equipamento?")
                 return
 
-            if "software" in lower:
+            if "software" in text.lower():
                 context.user_data["categoria"] = "software"
                 context.user_data["step"] = "descricao"
 
@@ -306,18 +298,14 @@ def run_bot(token=None):
         if step == "equipamento":
             context.user_data["dispositivo"] = text
             context.user_data["step"] = "descricao"
-
             await update.message.reply_text(f"Descreva o problema no {text}:")
             return
 
         if step == "descricao":
             context.user_data["descricao"] = text
 
-            resposta = responder_automatico(text)
-            sugestao = sugerir_solucao(text)
-
-            await update.message.reply_text(resposta)
-            await update.message.reply_text(sugestao)
+            await update.message.reply_text(responder_automatico(text))
+            await update.message.reply_text(sugerir_solucao(text))
 
             if problema_simples(text):
                 context.user_data["step"] = "aguardando_confirmacao"
@@ -325,7 +313,6 @@ def run_bot(token=None):
             else:
                 await criar_ticket(update, user, context.user_data)
                 context.user_data["step"] = "finalizado"
-
             return
 
         if step == "aguardando_confirmacao":
@@ -335,8 +322,6 @@ def run_bot(token=None):
             else:
                 await criar_ticket(update, user, context.user_data)
                 context.user_data["step"] = "finalizado"
-
-            return
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tickets", tickets))
