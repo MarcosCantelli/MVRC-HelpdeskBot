@@ -8,7 +8,7 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# 🔥 CORREÇÃO CRÍTICA (docker)
+# 🔥 URL correta para Docker (service name)
 API_URL = os.getenv("API_URL", "http://helpdesk-api:5000/ticket")
 
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -102,7 +102,7 @@ def criar_payload(user, context):
 
 
 # =========================
-# API
+# API (FIX CRÍTICO)
 # =========================
 def enviar_ticket(payload, request_func=None):
     if request_func is None:
@@ -110,11 +110,17 @@ def enviar_ticket(payload, request_func=None):
 
     try:
         response = request_func(API_URL, json=payload, timeout=5)
-        if hasattr(response, "json"):
-            return response.json()
-        return None
     except Exception:
         return None
+
+    # 🔥 NÃO ENGOLIR erro de json silenciosamente
+    try:
+        if hasattr(response, "json"):
+            return response.json()
+    except Exception:
+        return None
+
+    return None
 
 
 def notificar_telegram(user, ticket_id, request_func=None):
@@ -130,7 +136,8 @@ def notificar_telegram(user, ticket_id, request_func=None):
             json={
                 "chat_id": TELEGRAM_CHAT_ID,
                 "text": f"🚨 Novo chamado!\n👤 {user}\n🎟️ #{ticket_id}"
-            }
+            },
+            timeout=5
         )
     except Exception:
         return None
@@ -144,7 +151,7 @@ async def criar_ticket(update, user, context):
         payload = criar_payload(user, context)
         data = enviar_ticket(payload)
 
-        if data and data.get("id"):
+        if data and isinstance(data, dict) and data.get("id"):
             await update.message.reply_text(f"🎟️ Chamado #{data['id']} criado!")
             notificar_telegram(user, data["id"])
         else:
@@ -176,6 +183,7 @@ def run_bot(token=None):
         text = update.message.text or ""
         step = context.user_data.get("step", "tipo")
 
+        # STEP 1
         if step == "tipo":
             lower = text.lower()
 
@@ -201,6 +209,7 @@ def run_bot(token=None):
             await update.message.reply_text("Escolha Hardware ou Software.")
             return
 
+        # STEP 2
         if step == "equipamento":
             context.user_data["dispositivo"] = text
             context.user_data["step"] = "descricao"
@@ -208,6 +217,7 @@ def run_bot(token=None):
             await update.message.reply_text(f"Descreva o problema no {text}:")
             return
 
+        # STEP 3
         if step == "descricao":
             context.user_data["descricao"] = text
 
@@ -226,6 +236,7 @@ def run_bot(token=None):
 
             return
 
+        # STEP 4
         if step == "aguardando_confirmacao":
             if "sim" in text.lower():
                 context.user_data["step"] = "finalizado"
