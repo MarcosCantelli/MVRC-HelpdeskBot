@@ -308,10 +308,10 @@ def run_bot(token=None):
 
             context.user_data["step"] = "finalizado"
 
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tickets", tickets))
     app.add_handler(CommandHandler("close", close))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
     return app
 
