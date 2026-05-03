@@ -91,37 +91,28 @@ def criar_payload(user, context):
 
     return {
         "user": user,
-        "description": context.get("descricao") or context.get("description"),
-        "category": context.get("categoria") or context.get("category"),
-        "subcategory": context.get("dispositivo") or context.get("subcategory"),
-        "ai_suggestion": context.get("sugestao") or context.get("ai")
+        "description": context.get("descricao"),
+        "category": context.get("categoria"),
+        "subcategory": context.get("dispositivo"),
+        "ai_suggestion": context.get("sugestao")
     }
 
 
 # =========================
-# API (FIX FINAL)
+# API
 # =========================
 def enviar_ticket(payload, request_func=None):
     if request_func is None:
         request_func = requests.post
 
     try:
-        try:
-            response = request_func(API_URL, json=payload, timeout=5)
-        except TypeError:
-            # fallback para mocks (sem timeout)
-            response = request_func(API_URL, json=payload)
-
-        if hasattr(response, "json"):
-            return response.json()
-
-        return None
-
+        response = request_func(API_URL, json=payload, timeout=5)
+        return response.json()
     except Exception:
         return None
 
 
-def notificar_telegram(user, ticket_id, request_func=None):
+def notificar_telegram(user, ticket_code, request_func=None):
     if not TELEGRAM_CHAT_ID:
         return None
 
@@ -132,14 +123,10 @@ def notificar_telegram(user, ticket_id, request_func=None):
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
-            "text": f"🚨 Novo chamado!\n👤 {user}\n🎟️ #{ticket_id}"
+            "text": f"🚨 Novo chamado!\n👤 {user}\n🎟️ {ticket_code}"
         }
 
-        try:
-            return request_func(url, json=payload, timeout=5)
-        except TypeError:
-            # fallback para testes
-            return request_func(url, json=payload)
+        return request_func(url, json=payload, timeout=5)
 
     except Exception:
         return None
@@ -153,9 +140,11 @@ async def criar_ticket(update, user, context):
         payload = criar_payload(user, context)
         data = enviar_ticket(payload)
 
-        if data and data.get("id"):
-            await update.message.reply_text(f"🎟️ Chamado #{data['id']} criado!")
-            notificar_telegram(user, data["id"])
+        if data and data.get("ticket_code"):
+            await update.message.reply_text(
+                f"🎟️ Chamado {data['ticket_code']} criado com sucesso!"
+            )
+            notificar_telegram(user, data["ticket_code"])
         else:
             await update.message.reply_text("❌ Erro ao criar chamado.")
     except Exception:
@@ -185,10 +174,11 @@ def run_bot(token=None):
         text = update.message.text or ""
         step = context.user_data.get("step", "tipo")
 
-        if step == "tipo":
-            lower = text.lower()
+        # 🔥 pega usuário real
+        user = update.effective_user.full_name or update.effective_user.username or "desconhecido"
 
-            if "hardware" in lower:
+        if step == "tipo":
+            if "hardware" in text.lower():
                 context.user_data["categoria"] = "hardware"
                 context.user_data["step"] = "equipamento"
 
@@ -200,7 +190,7 @@ def run_bot(token=None):
                 )
                 return
 
-            if "software" in lower:
+            if "software" in text.lower():
                 context.user_data["categoria"] = "software"
                 context.user_data["step"] = "descricao"
 
@@ -230,20 +220,18 @@ def run_bot(token=None):
                 context.user_data["step"] = "aguardando_confirmacao"
                 await update.message.reply_text("Isso resolveu? (sim/não)")
             else:
-                await criar_ticket(update, "anonimo", context.user_data)
+                await criar_ticket(update, user, context.user_data)
                 context.user_data["step"] = "finalizado"
 
             return
 
         if step == "aguardando_confirmacao":
             if "sim" in text.lower():
-                context.user_data["step"] = "finalizado"
                 await update.message.reply_text("✅ Perfeito!")
             else:
-                await criar_ticket(update, "anonimo", context.user_data)
-                context.user_data["step"] = "finalizado"
+                await criar_ticket(update, user, context.user_data)
 
-            return
+            context.user_data["step"] = "finalizado"
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))

@@ -6,6 +6,7 @@ class Ticket(Base):
     __tablename__ = "tickets"
 
     id = Column(Integer, primary_key=True, index=True)
+    ticket_code = Column(String, unique=True, index=True)  # 🔥 NOVO
     user = Column(String, nullable=False)
     category = Column(String)
     subcategory = Column(String)
