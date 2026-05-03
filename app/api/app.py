@@ -3,15 +3,24 @@ from app.database.db import SessionLocal, Base, engine
 from app.models.ticket import Ticket
 from dotenv import load_dotenv
 import os
+import traceback
 from typing import Dict, Any, Tuple
 
 load_dotenv()
 
-# 🔥 Cria tabelas
-Base.metadata.create_all(bind=engine)
-
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
+
+
+# ==============================
+# 🔥 INIT DB (PROTEGIDO)
+# ==============================
+try:
+    Base.metadata.create_all(bind=engine)
+    print("✅ Banco conectado com sucesso")
+except Exception as e:
+    print("❌ Erro ao conectar no banco:")
+    traceback.print_exc()
 
 
 # ==============================
@@ -40,14 +49,18 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         db.commit()
         db.refresh(ticket)
 
+        print("✅ Ticket criado:", ticket.id)
+
         return {
             "id": ticket.id,
             "status": ticket.status
         }, 201
 
-    except Exception as e:
+    except Exception:
         db.rollback()
-        print("🔥 ERRO AO CRIAR TICKET:", e)  # log no console
+        print("🔥 ERRO COMPLETO AO CRIAR TICKET:")
+        traceback.print_exc()  # 🔥 AGORA MOSTRA O ERRO REAL
+
         return {"error": "erro interno"}, 500
 
     finally:
@@ -57,15 +70,22 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 # ==============================
 # 🌐 ROTAS
 # ==============================
+
 @app.route("/", methods=["GET"])
 def health():
+    return {"status": "ok"}
+
+
+@app.route("/health", methods=["GET"])
+def health_alt():
     return {"status": "ok"}
 
 
 @app.route("/ticket", methods=["POST"])
 def create_ticket():
     data = request.get_json(silent=True)
-    print("📥 Payload recebido:", data)  # debug
+
+    print("📥 Payload recebido:", data)
 
     response, status = create_ticket_service(data)
     return jsonify(response), status

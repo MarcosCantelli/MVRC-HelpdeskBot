@@ -127,6 +127,7 @@ pipeline {
                         ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << EOF
 set -e
 
+# Clone ou atualiza repo
 if [ ! -d "$APP_DIR" ]; then
     git clone -b $BRANCH $REPO_URL $APP_DIR
 fi
@@ -135,13 +136,18 @@ cd $APP_DIR
 git checkout $BRANCH
 git pull origin $BRANCH
 
+# 🔥 CRIA .env AUTOMATICAMENTE
+cat > .env <<EOL
+TELEGRAM_TOKEN=$TELEGRAM_TOKEN
+ADMIN_CHAT_ID=$ADMIN_CHAT_ID
+DATABASE_URL=$DATABASE_URL
+EOL
+
+# Pull imagens
 docker pull $DOCKER_IMAGE_API:latest
 docker pull $DOCKER_IMAGE_BOT:latest
 
-export TELEGRAM_TOKEN="$TELEGRAM_TOKEN"
-export ADMIN_CHAT_ID="$ADMIN_CHAT_ID"
-export DATABASE_URL="$DATABASE_URL"
-
+# Restart stack
 docker compose down || true
 docker compose up -d
 
