@@ -3,10 +3,12 @@ from app.database.db import SessionLocal, Base, engine
 from app.models.ticket import Ticket
 from dotenv import load_dotenv
 import os
-import traceback
+import logging
 from typing import Dict, Any, Tuple
 from datetime import datetime
 from sqlalchemy import func
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -19,8 +21,8 @@ ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
 # ==============================
 try:
     Base.metadata.create_all(bind=engine)
-except Exception:
-    traceback.print_exc()
+except Exception as e:
+    logger.exception("Erro ao inicializar banco de dados")
 
 
 # ==============================
@@ -69,9 +71,9 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             "created_at": ticket.created_at
         }, 201
 
-    except Exception:
+    except Exception as e:
         db.rollback()
-        traceback.print_exc()
+        logger.exception("Erro ao criar ticket")
         return {"error": "erro interno"}, 500
 
     finally:
@@ -131,9 +133,9 @@ def close_ticket(ticket_id):
 
         return {"status": "fechado"}, 200
 
-    except Exception:
+    except Exception as e:
         db.rollback()
-        traceback.print_exc()
+        logger.exception("Erro ao fechar ticket")
         return {"error": "erro interno"}, 500
 
     finally:
