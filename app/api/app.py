@@ -85,9 +85,10 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 # ==============================
 @app.route("/tickets", methods=["GET"])
 def list_tickets():
-    db = SessionLocal()
+    db = None
 
     try:
+        db = SessionLocal()
         tickets = db.query(Ticket).all()
 
         return jsonify([
@@ -101,8 +102,13 @@ def list_tickets():
             } for t in tickets
         ]), 200
 
+    except Exception as e:
+        logger.exception("Erro ao listar tickets")
+        return {"error": "erro interno"}, 500
+
     finally:
-        db.close()
+        if db:
+            db.close()
 
 
 # ==============================

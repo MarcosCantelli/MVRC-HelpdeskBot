@@ -1,5 +1,6 @@
 import pytest
 from app.api.app import app
+from unittest.mock import Mock, patch
 
 
 @pytest.fixture
@@ -31,11 +32,15 @@ def test_list_tickets(client):
     assert resp.status_code == 200
 
 
-def test_erro_interno_simulado(monkeypatch, client):
-    def mock_db(*args, **kwargs):
-        raise Exception("erro")
-
-    monkeypatch.setattr("app.api.app.SessionLocal", mock_db)
-
-    resp = client.get("/tickets")
-    assert resp.status_code in [500, 200]
+def test_erro_interno_em_list_tickets(client):
+    """Test que a rota /tickets trata erro interno com graceful handling"""
+    with patch("app.api.app.SessionLocal") as mock_session:
+        # Mock the query method to raise an exception
+        mock_db = Mock()
+        mock_db.query.side_effect = Exception("erro simulado")
+        mock_session.return_value = mock_db
+        
+        resp = client.get("/tickets")
+        # Deve retornar 500 em caso de erro
+        assert resp.status_code == 500
+        assert "error" in resp.json
