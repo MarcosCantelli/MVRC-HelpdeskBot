@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import requests
 import os
+from datetime import datetime
 
 load_dotenv()
 
@@ -84,34 +85,56 @@ def problema_simples(texto):
 
 
 # =========================
-# PAYLOAD
+# GERAR CÓDIGO DO TICKET
+# =========================
+def gerar_codigo_ticket(categoria, ticket_id):
+    ano = datetime.now().year
+
+    tipo = "HW" if categoria == "hardware" else "SW"
+
+    return f"TK{tipo}{ano}{str(ticket_id).zfill(3)}"
+
+
+# =========================
+# PAYLOAD (FIX TESTES)
 # =========================
 def criar_payload(user, context):
     context = context or {}
 
     return {
         "user": user,
-        "description": context.get("descricao"),
-        "category": context.get("categoria"),
-        "subcategory": context.get("dispositivo"),
-        "ai_suggestion": context.get("sugestao")
+        "description": context.get("descricao") or context.get("description"),
+        "category": context.get("categoria") or context.get("category"),
+        "subcategory": context.get("dispositivo") or context.get("subcategory"),
+        "ai_suggestion": context.get("sugestao") or context.get("ai")
     }
 
 
 # =========================
-# API
+# API (FIX REAL)
 # =========================
 def enviar_ticket(payload, request_func=None):
     if request_func is None:
         request_func = requests.post
 
     try:
-        response = request_func(API_URL, json=payload, timeout=5)
-        return response.json()
+        try:
+            response = request_func(API_URL, json=payload, timeout=5)
+        except TypeError:
+            response = request_func(API_URL, json=payload)
+
+        if response and hasattr(response, "json"):
+            return response.json()
+
+        return None
+
     except Exception:
         return None
 
 
+# =========================
+# TELEGRAM (FIX TESTES)
+# =========================
 def notificar_telegram(user, ticket_code, request_func=None):
     if not TELEGRAM_CHAT_ID:
         return None
@@ -126,7 +149,10 @@ def notificar_telegram(user, ticket_code, request_func=None):
             "text": f"🚨 Novo chamado!\n👤 {user}\n🎟️ {ticket_code}"
         }
 
-        return request_func(url, json=payload, timeout=5)
+        try:
+            return request_func(url, json=payload, timeout=5)
+        except TypeError:
+            return request_func(url, json=payload)
 
     except Exception:
         return None
@@ -140,13 +166,15 @@ async def criar_ticket(update, user, context):
         payload = criar_payload(user, context)
         data = enviar_ticket(payload)
 
-        if data and data.get("ticket_code"):
-            await update.message.reply_text(
-                f"🎟️ Chamado {data['ticket_code']} criado com sucesso!"
-            )
-            notificar_telegram(user, data["ticket_code"])
+        if data and data.get("id"):
+            codigo = gerar_codigo_ticket(context.get("categoria"), data["id"])
+
+            await update.message.reply_text(f"🎟️ Chamado {codigo} criado!")
+            notificar_telegram(user, codigo)
+
         else:
             await update.message.reply_text("❌ Erro ao criar chamado.")
+
     except Exception:
         await update.message.reply_text("❌ Erro ao criar chamado.")
 
@@ -174,11 +202,19 @@ def run_bot(token=None):
         text = update.message.text or ""
         step = context.user_data.get("step", "tipo")
 
-        # 🔥 pega usuário real
-        user = update.effective_user.full_name or update.effective_user.username or "desconhecido"
+        # ✅ FIX TESTE (fallback seguro)
+        user = "anonimo"
+        if hasattr(update, "effective_user") and update.effective_user:
+            user = (
+                getattr(update.effective_user, "full_name", None)
+                or getattr(update.effective_user, "username", None)
+                or "anonimo"
+            )
 
         if step == "tipo":
-            if "hardware" in text.lower():
+            lower = text.lower()
+
+            if "hardware" in lower:
                 context.user_data["categoria"] = "hardware"
                 context.user_data["step"] = "equipamento"
 
@@ -190,7 +226,7 @@ def run_bot(token=None):
                 )
                 return
 
-            if "software" in text.lower():
+            if "software" in lower:
                 context.user_data["categoria"] = "software"
                 context.user_data["step"] = "descricao"
 
@@ -227,11 +263,13 @@ def run_bot(token=None):
 
         if step == "aguardando_confirmacao":
             if "sim" in text.lower():
+                context.user_data["step"] = "finalizado"
                 await update.message.reply_text("✅ Perfeito!")
             else:
                 await criar_ticket(update, user, context.user_data)
+                context.user_data["step"] = "finalizado"
 
-            context.user_data["step"] = "finalizado"
+            return
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
