@@ -49,7 +49,7 @@ def get_user_id(update):
 
 
 def is_admin(update):
-    return get_user_id(update) in ADMIN_IDS
+    return bool(get_user_id(update)) and get_user_id(update) in ADMIN_IDS
 
 
 # =========================
@@ -145,7 +145,7 @@ def enviar_ticket(payload, request_func=None):
 def listar_tickets():
     try:
         return requests.get(f"{API_URL}/tickets").json()
-    except:
+    except Exception:
         return []
 
 
@@ -155,7 +155,7 @@ def fechar_ticket(ticket_id, admin):
             f"{API_URL}/ticket/{ticket_id}/close",
             json={"admin": admin},
         ).json()
-    except:
+    except Exception:
         return None
 
 
