@@ -11,22 +11,20 @@ from sqlalchemy import func
 load_dotenv()
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
 
+ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
 
 # ==============================
-# 🔥 INIT DB
+# INIT DB
 # ==============================
 try:
     Base.metadata.create_all(bind=engine)
-    print("✅ Banco conectado com sucesso")
 except Exception:
-    print("❌ Erro ao conectar no banco:")
     traceback.print_exc()
 
 
 # ==============================
-# 🔧 GERAR CÓDIGO DO TICKET
+# GERAR CÓDIGO
 # ==============================
 def gerar_ticket_code(db, category):
     ano = datetime.now().year
@@ -39,14 +37,11 @@ def gerar_ticket_code(db, category):
 
 
 # ==============================
-# 🔧 SERVICE LAYER
+# CREATE
 # ==============================
 def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-    if not isinstance(data, dict):
-        return {"error": "Payload deve ser um JSON válido"}, 400
-
-    if not data.get("user") or not data.get("description"):
-        return {"error": "Campos obrigatórios: user, description"}, 400
+    if not data or not data.get("user") or not data.get("description"):
+        return {"error": "Campos obrigatórios"}, 400
 
     db = SessionLocal()
 
@@ -67,17 +62,15 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         db.commit()
         db.refresh(ticket)
 
-        print("✅ Ticket criado:", ticket.ticket_code)
-
         return {
             "id": ticket.id,
             "ticket_code": ticket.ticket_code,
-            "status": ticket.status
+            "status": ticket.status,
+            "created_at": ticket.created_at
         }, 201
 
     except Exception:
         db.rollback()
-        print("🔥 ERRO COMPLETO AO CRIAR TICKET:")
         traceback.print_exc()
         return {"error": "erro interno"}, 500
 
@@ -86,32 +79,77 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 
 
 # ==============================
-# 🌐 ROTAS
+# LISTAR TICKETS
 # ==============================
+@app.route("/tickets", methods=["GET"])
+def list_tickets():
+    db = SessionLocal()
 
-@app.route("/", methods=["GET"])
-def health():
-    return {"status": "ok"}
+    try:
+        tickets = db.query(Ticket).all()
+
+        return jsonify([
+            {
+                "id": t.id,
+                "code": t.ticket_code,
+                "user": t.user,
+                "status": t.status,
+                "created_at": t.created_at,
+                "closed_at": t.closed_at
+            } for t in tickets
+        ]), 200
+
+    finally:
+        db.close()
 
 
-@app.route("/health", methods=["GET"])
-def health_alt():
-    return {"status": "ok"}
+# ==============================
+# FECHAR TICKET
+# ==============================
+@app.route("/ticket/<int:ticket_id>/close", methods=["POST"])
+def close_ticket(ticket_id):
+    data = request.get_json() or {}
+    admin_id = str(data.get("admin"))
+
+    if admin_id not in ADMIN_IDS:
+        return {"error": "não autorizado"}, 403
+
+    db = SessionLocal()
+
+    try:
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+
+        if not ticket:
+            return {"error": "not found"}, 404
+
+        ticket.status = "fechado"
+        ticket.closed_at = datetime.utcnow()
+        ticket.closed_by = admin_id
+        ticket.admin_notes = data.get("notes")
+
+        db.commit()
+
+        return {"status": "fechado"}, 200
+
+    except Exception:
+        db.rollback()
+        traceback.print_exc()
+        return {"error": "erro interno"}, 500
+
+    finally:
+        db.close()
 
 
+# ==============================
+# CREATE ROUTE
+# ==============================
 @app.route("/ticket", methods=["POST"])
 def create_ticket():
     data = request.get_json(silent=True)
-
-    print("📥 Payload recebido:", data)
-
     response, status = create_ticket_service(data)
     return jsonify(response), status
 
 
-# ==============================
-# 🚀 ENTRYPOINT
-# ==============================
-if __name__ == "__main__":
-    print("🚀 API iniciando em 0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+@app.route("/health")
+def health():
+    return {"status": "ok"}
