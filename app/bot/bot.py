@@ -76,6 +76,10 @@ def responder_automatico(texto):
 
     texto = texto.lower()
 
+    # 🔥 REGRA MAIS ESPECÍFICA PRIMEIRO (CORREÇÃO DO CI)
+    if "sem conexão" in texto or "sem internet" in texto:
+        return "❌ Verificar conexão ou reiniciar o roteador."
+
     for chave, resposta in FAQ.items():
         if chave in texto:
             return resposta
@@ -98,7 +102,7 @@ def problema_simples(texto):
 
 
 # =========================
-# PAYLOAD (FIX TESTE)
+# PAYLOAD
 # =========================
 def criar_payload(user, context):
     context = context or {}
@@ -177,7 +181,7 @@ def notificar_telegram(user, ticket_code, request_func=None):
 
 
 # =========================
-# CRIAR TICKET (FIX TESTE)
+# CRIAR TICKET
 # =========================
 async def criar_ticket(update, user, context):
     try:
@@ -207,9 +211,6 @@ def run_bot(token=None):
     token = token or TOKEN
     app = ApplicationBuilder().token(token).build()
 
-    # =========================
-    # START
-    # =========================
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         context.user_data["step"] = "tipo"
@@ -221,9 +222,6 @@ def run_bot(token=None):
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
         )
 
-    # =========================
-    # ADMIN
-    # =========================
     async def tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
             await update.message.reply_text("❌ Acesso negado.")
@@ -255,9 +253,6 @@ def run_bot(token=None):
 
         await update.message.reply_text(f"Ticket {ticket_id} fechado.")
 
-    # =========================
-    # HANDLER PRINCIPAL (FIX CI)
-    # =========================
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text or ""
         step = context.user_data.get("step", "tipo")
@@ -308,7 +303,6 @@ def run_bot(token=None):
 
             context.user_data["step"] = "finalizado"
 
-    # 🔥 ORDEM CORRETA PRA PASSAR NO TESTE
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tickets", tickets))
