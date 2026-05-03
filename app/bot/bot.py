@@ -7,8 +7,12 @@ import os
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-API_URL = os.getenv("API_URL", "http://localhost:5000")
+
+# 🔥 CORREÇÃO CRÍTICA (docker)
+API_URL = os.getenv("API_URL", "http://helpdesk-api:5000/ticket")
+
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
 
 FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
@@ -62,7 +66,7 @@ def responder_automatico(texto):
 
 
 # =========================
-# DETECTAR COMPLEXIDADE (FIX)
+# DETECTAR COMPLEXIDADE
 # =========================
 def problema_simples(texto):
     if not texto:
@@ -105,7 +109,7 @@ def enviar_ticket(payload, request_func=None):
         request_func = requests.post
 
     try:
-        response = request_func(API_URL, json=payload)
+        response = request_func(API_URL, json=payload, timeout=5)
         if hasattr(response, "json"):
             return response.json()
         return None
@@ -133,7 +137,7 @@ def notificar_telegram(user, ticket_id, request_func=None):
 
 
 # =========================
-# CRIAÇÃO DE TICKET (FIX)
+# CRIAÇÃO DE TICKET
 # =========================
 async def criar_ticket(update, user, context):
     try:

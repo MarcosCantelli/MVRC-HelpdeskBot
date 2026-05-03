@@ -78,7 +78,6 @@ pipeline {
             steps {
                 sh '''
                     set -e
-
                     docker run --privileged --rm tonistiigi/binfmt --install all
                     docker buildx create --name multiarch_builder --use || true
                     docker buildx inspect --bootstrap
@@ -119,17 +118,14 @@ pipeline {
             steps {
                 withCredentials([
                     string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN'),
-                    string(credentialsId: 'telegram-admin-id', variable: 'ADMIN_CHAT_ID')
+                    string(credentialsId: 'telegram-admin-id', variable: 'ADMIN_CHAT_ID'),
+                    string(credentialsId: 'supabase-db-url', variable: 'DATABASE_URL')
                 ]) {
                     sh '''
                         set -e
 
-                        echo "🚀 Deploy no Raspberry..."
-
                         ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << EOF
 set -e
-
-echo "📥 Clonando/Atualizando projeto..."
 
 if [ ! -d "$APP_DIR" ]; then
     git clone -b $BRANCH $REPO_URL $APP_DIR
@@ -139,19 +135,16 @@ cd $APP_DIR
 git checkout $BRANCH
 git pull origin $BRANCH
 
-echo "📥 Pull das imagens (sem build)"
 docker pull $DOCKER_IMAGE_API:latest
 docker pull $DOCKER_IMAGE_BOT:latest
 
-echo "📦 Subindo com docker-compose"
-
 export TELEGRAM_TOKEN="$TELEGRAM_TOKEN"
 export ADMIN_CHAT_ID="$ADMIN_CHAT_ID"
+export DATABASE_URL="$DATABASE_URL"
 
 docker compose down || true
 docker compose up -d
 
-echo "✅ Deploy finalizado!"
 EOF
                     '''
                 }
@@ -169,7 +162,7 @@ EOF
         }
 
         failure {
-            echo "❌ Pipeline falhou - verifique logs acima"
+            echo "❌ Pipeline falhou"
         }
     }
 }
