@@ -49,7 +49,7 @@ def test_erro_interno_em_list_tickets(client):
 def test_close_ticket_sucesso(client):
     """Testa fechamento bem-sucedido de ticket"""
     with patch("app.api.app.SessionLocal") as mock_session, \
-         patch("app.api.app.datetime") as mock_datetime, \
+         patch("app.api.app.utcnow") as mock_utcnow, \
          patch("app.api.app.ADMIN_IDS", ["admin"]):
 
         # Mock do banco
@@ -61,7 +61,7 @@ def test_close_ticket_sucesso(client):
         mock_session.return_value = mock_db
 
         # Mock do datetime
-        mock_datetime.utcnow.return_value = "2024-01-01T00:00:00"
+        mock_utcnow.return_value = "2024-01-01T00:00:00"
 
         # Fazer requisição
         resp = client.post("/ticket/1/close", json={"admin": "admin", "notes": "Resolvido"})
