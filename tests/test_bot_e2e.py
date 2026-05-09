@@ -76,7 +76,7 @@ async def test_fluxo_completo_hardware_simples(monkeypatch):
 @pytest.mark.asyncio
 async def test_fluxo_completo_software_ticket(monkeypatch):
     """
-    Fluxo completo software → problema complexo → abre ticket
+    Fluxo completo software → equipamento → problema complexo → abre ticket
     """
 
     app = run_bot(token="fake-token")
@@ -92,6 +92,12 @@ async def test_fluxo_completo_software_ticket(monkeypatch):
 
     # SOFTWARE
     update = FakeUpdate("💻 Software")
+    await msg_handler.callback(update, context)
+
+    assert context.user_data["step"] == "equipamento"
+
+    # EQUIPAMENTO
+    update = FakeUpdate("Computador")
     await msg_handler.callback(update, context)
 
     assert context.user_data["step"] == "descricao"

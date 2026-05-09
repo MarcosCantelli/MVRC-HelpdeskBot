@@ -160,6 +160,139 @@ def fechar_ticket(ticket_id, admin):
 
 
 # =========================
+# ADMIN FUNCTIONS
+# =========================
+async def listar_chamados_admin(update, context):
+    try:
+        response = requests.get(f"{API_URL}/tickets")
+        if response.status_code == 200:
+            tickets = response.json()
+            tickets_abertos = [t for t in tickets if t.get("status") == "aberto"]
+
+            if not tickets_abertos:
+                await update.message.reply_text("Nenhum ticket aberto encontrado.")
+                return
+
+            msg = "📋 Tickets abertos:\n\n"
+            keyboard = []
+
+            for t in tickets_abertos:
+                msg += f"🎫 {t['code']} - {t['user']}\n"
+                keyboard.append([f"📄 Ver {t['code']}"])
+
+            keyboard.append(["↩️ Voltar"])
+            await update.message.reply_text(
+                msg,
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            )
+            context.user_data["step"] = "listar_detalhes"
+        else:
+            await update.message.reply_text("Erro ao listar tickets.")
+    except Exception:
+        await update.message.reply_text("Erro ao listar tickets.")
+
+
+async def consultar_ticket_admin(update, context, ticket_code):
+    try:
+        response = requests.get(f"{API_URL}/ticket/{ticket_code}")
+        if response.status_code == 200:
+            ticket = response.json()
+
+            context.user_data["ticket_atual"] = ticket
+            context.user_data["step"] = "gerenciar_ticket"
+
+            status_options = ["🔓 Aberto", "⏳ Em atendimento", "✅ Encerrado"]
+            keyboard = [[opt] for opt in status_options]
+            keyboard.append(["📝 Adicionar observação"])
+            keyboard.append(["↩️ Voltar"])
+
+            msg = f"🎫 Ticket: {ticket['code']}\n👤 Usuário: {ticket['user']}\n📅 Criado: {ticket.get('created_at', 'N/A')}\n📋 Status: {ticket['status']}\n\nDescrição: {ticket.get('description', 'N/A')}"
+
+            if ticket.get('admin_notes'):
+                msg += f"\n\n📝 Observações:\n{ticket['admin_notes']}"
+
+            await update.message.reply_text(
+                msg,
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            )
+        elif response.status_code == 404:
+            await update.message.reply_text("Ticket não encontrado.")
+            context.user_data["step"] = "admin_menu"
+        else:
+            await update.message.reply_text("Erro ao consultar ticket.")
+    except Exception:
+        await update.message.reply_text("Erro ao consultar ticket.")
+
+
+async def gerenciar_ticket_admin(update, context, text):
+    ticket = context.user_data.get("ticket_atual")
+    if not ticket:
+        await update.message.reply_text("Erro: ticket não encontrado.")
+        return
+
+    if "aberto" in text.lower():
+        await alterar_status_ticket(update, context, ticket["id"], "aberto")
+    elif "em atendimento" in text.lower():
+        await alterar_status_ticket(update, context, ticket["id"], "em atendimento")
+    elif "encerrado" in text.lower():
+        await alterar_status_ticket(update, context, ticket["id"], "encerrado")
+    elif "adicionar observação" in text.lower():
+        context.user_data["step"] = "adicionar_observacao"
+        await update.message.reply_text("Digite a observação:")
+    elif "voltar" in text.lower():
+        context.user_data["step"] = "admin_menu"
+        keyboard = [
+            ["🆕 Abrir chamado"],
+            ["📋 Listar chamados"],
+            ["🔍 Consultar chamado"]
+        ]
+        await update.message.reply_text(
+            "O que você gostaria de fazer?",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+    else:
+        await update.message.reply_text("Opção inválida.")
+
+
+async def alterar_status_ticket(update, context, ticket_id, status):
+    try:
+        # Assumindo que há um endpoint para alterar status
+        response = requests.patch(
+            f"{API_URL}/ticket/{ticket_id}/status",
+            json={"status": status, "admin": get_user_id(update)}
+        )
+        if response.status_code == 200:
+            await update.message.reply_text(f"Status alterado para: {status}")
+            # Recarregar ticket
+            await consultar_ticket_admin(update, context, context.user_data["ticket_atual"]["code"])
+        else:
+            await update.message.reply_text("Erro ao alterar status.")
+    except Exception:
+        await update.message.reply_text("Erro ao alterar status.")
+
+
+async def adicionar_observacao_admin(update, context, observacao):
+    ticket = context.user_data.get("ticket_atual")
+    if not ticket:
+        await update.message.reply_text("Erro: ticket não encontrado.")
+        return
+
+    try:
+        # Assumindo endpoint para adicionar observação
+        response = requests.post(
+            f"{API_URL}/ticket/{ticket['id']}/note",
+            json={"note": observacao, "admin": get_user_id(update)}
+        )
+        if response.status_code == 200:
+            await update.message.reply_text("Observação adicionada.")
+            await consultar_ticket_admin(update, context, ticket["code"])
+        else:
+            await update.message.reply_text("Erro ao adicionar observação.")
+    except Exception:
+        await update.message.reply_text("Erro ao adicionar observação.")
+
+
+# =========================
 # NOTIFICAÇÃO
 # =========================
 def notificar_telegram(user, ticket_code, request_func=None):
@@ -194,19 +327,22 @@ async def criar_ticket(update, user, context):
 
         try:
             data = enviar_ticket(payload)
-        except Exception:
-            data = None
+        except Exception as e:
+            await update.message.reply_text(f"❌ Erro de conexão com a API: {str(e)}")
+            return
 
         if data and data.get("id"):
             codigo = data.get("ticket_code") or f"TK{str(data['id']).zfill(3)}"
 
             await update.message.reply_text(f"🎟️ Chamado {codigo} criado!")
             notificar_telegram(user, codigo)
+        elif data and data.get("error"):
+            await update.message.reply_text(f"❌ Erro da API: {data['error']}")
         else:
-            await update.message.reply_text("❌ Erro ao criar chamado.")
+            await update.message.reply_text("❌ Erro ao criar chamado. Verifique a configuração da API.")
 
-    except Exception:
-        await update.message.reply_text("❌ Erro ao criar chamado.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro interno: {str(e)}")
 
 
 # =========================
@@ -220,12 +356,25 @@ def run_bot(token=None):
         context.user_data.clear()
         context.user_data["step"] = "tipo"
 
-        keyboard = [["🖥️ Hardware", "💻 Software"]]
+        user_name = get_user(update)
 
-        await update.message.reply_text(
-            "Bem-vindo! O problema é hardware ou software?",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
-        )
+        if is_admin(update):
+            keyboard = [
+                ["🆕 Abrir chamado"],
+                ["📋 Listar chamados"],
+                ["🔍 Consultar chamado"]
+            ]
+            await update.message.reply_text(
+                f"Bem-vindo {user_name}, o que você gostaria de fazer?",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+            )
+            context.user_data["step"] = "admin_menu"
+        else:
+            keyboard = [["🖥️ Hardware", "💻 Software"]]
+            await update.message.reply_text(
+                "Bem-vindo! O problema é hardware ou software?",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+            )
 
     async def tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
@@ -264,6 +413,58 @@ def run_bot(token=None):
 
         user = get_user(update)
 
+        if step == "admin_menu":
+            if "abrir chamado" in text.lower():
+                context.user_data["step"] = "tipo"
+                keyboard = [["🖥️ Hardware", "💻 Software"]]
+                await update.message.reply_text(
+                    "O problema é hardware ou software?",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+                )
+                return
+
+            if "listar chamados" in text.lower():
+                await listar_chamados_admin(update, context)
+                return
+
+            if "consultar chamado" in text.lower():
+                context.user_data["step"] = "consultar_ticket"
+                await update.message.reply_text("Digite o número do ticket (ex: TKHW2024001):")
+                return
+
+            await update.message.reply_text("Escolha uma opção válida.")
+            return
+
+        if step == "consultar_ticket":
+            ticket_code = text.strip().upper()
+            await consultar_ticket_admin(update, context, ticket_code)
+            return
+
+        if step == "listar_detalhes":
+            if text.startswith("📄 Ver "):
+                ticket_code = text.replace("📄 Ver ", "").strip()
+                await consultar_ticket_admin(update, context, ticket_code)
+            elif "voltar" in text.lower():
+                context.user_data["step"] = "admin_menu"
+                keyboard = [
+                    ["🆕 Abrir chamado"],
+                    ["📋 Listar chamados"],
+                    ["🔍 Consultar chamado"]
+                ]
+                await update.message.reply_text(
+                    "O que você gostaria de fazer?",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                )
+            return
+
+        if step == "gerenciar_ticket":
+            await gerenciar_ticket_admin(update, context, text)
+            return
+
+        if step == "adicionar_observacao":
+            await adicionar_observacao_admin(update, context, text)
+            return
+
         if step == "tipo":
             if "hardware" in text.lower():
                 context.user_data["categoria"] = "hardware"
@@ -273,8 +474,8 @@ def run_bot(token=None):
 
             if "software" in text.lower():
                 context.user_data["categoria"] = "software"
-                context.user_data["step"] = "descricao"
-                await update.message.reply_text("Descreva o problema:")
+                context.user_data["step"] = "equipamento"
+                await update.message.reply_text("Qual equipamento?")
                 return
 
             await update.message.reply_text("Escolha Hardware ou Software.")
