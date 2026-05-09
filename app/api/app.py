@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 import logging
 from typing import Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 app = Flask(__name__)
+
+
+def utcnow():
+    return datetime.now(timezone.utc)
 
 ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
 
@@ -29,7 +33,7 @@ except Exception as e:
 # GERAR CÓDIGO
 # ==============================
 def gerar_ticket_code(db, category):
-    ano = datetime.now().year
+    ano = datetime.now(timezone.utc).year
     prefixo = "HW" if category == "hardware" else "SW"
 
     total = db.query(func.count(Ticket.id)).scalar() or 0
@@ -131,7 +135,7 @@ def close_ticket(ticket_id):
             return {"error": "not found"}, 404
 
         ticket.status = "fechado"
-        ticket.closed_at = datetime.utcnow()
+        ticket.closed_at = utcnow()
         ticket.closed_by = admin_id
         ticket.admin_notes = data.get("notes")
 

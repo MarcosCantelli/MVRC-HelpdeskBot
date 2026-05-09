@@ -108,10 +108,10 @@ class TestBotHandlersCompleteness:
         
         # Encontra o handler de start
         start_handlers = [
-            h for h in app.handlers[0] 
-            if h.__class__.__name__ == "CommandHandler" 
-            and hasattr(h, 'filters') 
-            and str(h.filters) == "<CommandFilter ['start']>"
+            h for h in app.handlers[0]
+            if h.__class__.__name__ == "CommandHandler"
+            and hasattr(h, 'commands')
+            and 'start' in h.commands
         ]
         
         assert len(start_handlers) > 0

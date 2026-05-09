@@ -1,6 +1,10 @@
 from sqlalchemy import Column, Integer, String, DateTime
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database.db import Base
+
+
+def utcnow():
+    return datetime.now(timezone.utc)
 
 
 class Ticket(Base):
@@ -20,8 +24,8 @@ class Ticket(Base):
     status = Column(String, default="aberto", nullable=False)
 
     # 🔥 NOVO
-    created_at = Column(DateTime, default=datetime.utcnow)
-    closed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    closed_at = Column(DateTime(timezone=True), nullable=True)
 
     # 🔥 ADMIN
     closed_by = Column(String, nullable=True)
