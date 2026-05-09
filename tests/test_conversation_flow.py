@@ -75,9 +75,15 @@ async def test_fluxo_software_sem_ticket(monkeypatch):
     update.message.text = "💻 Software"
     await handler.callback(update, context)
 
+    assert "qual equipamento" in update.message.texts[-1].lower()
+
+    # 2️⃣ equipamento
+    update.message.text = "Computador"
+    await handler.callback(update, context)
+
     assert "descreva o problema" in update.message.texts[-1].lower()
 
-    # 2️⃣ problema simples → NÃO cria ticket
+    # 3️⃣ problema simples → NÃO cria ticket
     update.message.text = "internet lenta"
     await handler.callback(update, context)
 
