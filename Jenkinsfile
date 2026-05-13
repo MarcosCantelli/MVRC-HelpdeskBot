@@ -28,7 +28,7 @@ pipeline {
 
         PROJECT_TYPE = 'python'
         SONAR_PROJECT_KEY = 'helpdesk-bot'
-        SONAR_HOST_URL = 'http://192.168.31.233:9000'
+        SONAR_HOST_URL = 'http://192.168.31.232:9000'
     }
 
     stages {
@@ -62,7 +62,7 @@ pipeline {
         stage('Code Analysis (SonarQube)') {
             steps {
                 script {
-                    def sonarUrl = env.SONAR_HOST_URL ?: 'http://192.168.31.233:9000'
+                    def sonarUrl = env.SONAR_HOST_URL ?: 'http://192.168.31.232:9000'
                     def status = sh(script: "python3 -c \"import urllib.request; import sys;\ntry:\n    urllib.request.urlopen('" + sonarUrl + "', timeout=5)\nexcept Exception:\n    sys.exit(1)\"", returnStatus: true)
                     if (status != 0) {
                         error "SonarQube server unreachable at ${sonarUrl}. Verifique a rede ou o endereço de host."
