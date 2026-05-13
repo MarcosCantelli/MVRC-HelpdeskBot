@@ -28,6 +28,7 @@ pipeline {
 
         PROJECT_TYPE = 'python'
         SONAR_PROJECT_KEY = 'helpdesk-bot'
+        SONAR_HOST_URL = 'http://192.168.31.233:9000'
     }
 
     stages {
@@ -61,6 +62,11 @@ pipeline {
         stage('Code Analysis (SonarQube)') {
             steps {
                 script {
+                    def sonarUrl = env.SONAR_HOST_URL ?: 'http://192.168.31.233:9000'
+                    def status = sh(script: "python3 -c 'import urllib.request; urllib.request.urlopen(\\\"${sonarUrl}\\\", timeout=5)'", returnStatus: true)
+                    if (status != 0) {
+                        error "SonarQube server unreachable at ${sonarUrl}. Verifique a rede ou o endereço de host."
+                    }
                     devopsPipeline.sonarAnalysis()
                 }
             }
