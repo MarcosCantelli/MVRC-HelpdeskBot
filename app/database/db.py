@@ -1,48 +1,73 @@
 import os
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# ======================================================
+# TEST ENV
+# ======================================================
+
 TEST_ENV = os.getenv("TEST_ENV", "false").lower() == "true"
 
-# =========================
+# ======================================================
 # DATABASE URL
-# =========================
+# ======================================================
 
 if TEST_ENV:
-    DATABASE_URL = "sqlite:///./test.db"
-
+    DATABASE_URL = "sqlite:///:memory:"
 else:
     DATABASE_URL = os.getenv("DATABASE_URL")
 
     if not DATABASE_URL:
-        raise ValueError(
-            "DATABASE_URL não configurada"
-        )
+        DATABASE_URL = "sqlite:///./test.db"
 
-# =========================
-# ENGINE
-# =========================
+# ======================================================
+# ENGINE CONFIG
+# ======================================================
 
-connect_args = {}
+engine_kwargs = {}
 
+# SQLite
 if DATABASE_URL.startswith("sqlite"):
-    connect_args = {
-        "check_same_thread": False
+    engine_kwargs = {
+        "connect_args": {
+            "check_same_thread": False
+        }
     }
+
+# PostgreSQL / Supabase
+else:
+    engine_kwargs = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+        "pool_size": 5,
+        "max_overflow": 10
+    }
+
+# ======================================================
+# ENGINE
+# ======================================================
 
 engine = create_engine(
     DATABASE_URL,
-    echo=False,
-    connect_args=connect_args
+    **engine_kwargs
 )
+
+# ======================================================
+# SESSION
+# ======================================================
 
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine
 )
+
+# ======================================================
+# BASE
+# ======================================================
 
 Base = declarative_base()
