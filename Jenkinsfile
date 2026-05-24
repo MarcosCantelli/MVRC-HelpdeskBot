@@ -15,17 +15,30 @@ pipeline {
     }
 
     environment {
+
+        // =========================
+        // DOCKER
+        // =========================
         DOCKER_IMAGE_API = 'mrhightech/helpdesk-api'
         DOCKER_IMAGE_BOT = 'mrhightech/helpdesk-bot'
 
+        // =========================
+        // VM
+        // =========================
         VM_IP   = '192.168.31.229'
         VM_USER = 'mvrc'
         SSH_KEY = '/var/lib/jenkins/.ssh/ansible_key'
 
+        // =========================
+        // GIT
+        // =========================
         REPO_URL = 'https://github.com/MarcosCantelli/MVRC-HelpdeskBot.git'
         APP_DIR  = 'app'
         BRANCH   = 'main'
 
+        // =========================
+        // SONAR
+        // =========================
         PROJECT_TYPE = 'python'
         SONAR_PROJECT_KEY = 'helpdesk-bot'
         SONAR_HOST_URL = 'http://192.168.31.232:9000'
@@ -33,76 +46,177 @@ pipeline {
 
     stages {
 
+        // =========================
+        // CHECKOUT
+        // =========================
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
+        // =========================
+        // BUILD + TEST
+        // =========================
         stage('Build & Test') {
             steps {
+
                 sh '''
                     set -e
 
+                    echo "========================="
+                    echo "CRIANDO VENV"
+                    echo "========================="
+
                     python3 -m venv venv
+
                     . venv/bin/activate
 
+                    echo "========================="
+                    echo "ATUALIZANDO PIP"
+                    echo "========================="
+
                     pip install --upgrade pip
+
+                    echo "========================="
+                    echo "INSTALANDO DEPENDÊNCIAS"
+                    echo "========================="
+
                     pip install -r requirements.txt
+
+                    echo "========================="
+                    echo "INSTALANDO DEPENDÊNCIAS TESTE"
+                    echo "========================="
+
                     pip install pytest pytest-cov pytest-asyncio
+
+                    echo "========================="
+                    echo "CONFIGURANDO AMBIENTE TESTE"
+                    echo "========================="
 
                     export PYTHONPATH=$(pwd)
                     export TEST_ENV=true
 
+                    echo "========================="
+                    echo "RODANDO TESTES"
+                    echo "========================="
+
                     pytest --cov=app --cov-report=xml:coverage.xml
+
+                    echo "========================="
+                    echo "TESTES FINALIZADOS"
+                    echo "========================="
                 '''
             }
         }
 
+        // =========================
+        // SONARQUBE
+        // =========================
         stage('Code Analysis (SonarQube)') {
+
             steps {
-                script {
-                    def sonarUrl = env.SONAR_HOST_URL ?: 'http://192.168.31.232:9000'
-                    def status = sh(script: "python3 -c \"import urllib.request; import sys;\ntry:\n    urllib.request.urlopen('" + sonarUrl + "', timeout=5)\nexcept Exception:\n    sys.exit(1)\"", returnStatus: true)
-                    if (status != 0) {
-                        error "SonarQube server unreachable at ${sonarUrl}. Verifique a rede ou o endereço de host."
+
+                withSonarQubeEnv('SonarQube') {
+
+                    script {
+
+                        def scannerHome = tool 'SonarScanner'
+
+                        sh """
+                            set -e
+
+                            . venv/bin/activate
+
+                            export PYTHONPATH=\$(pwd)
+                            export TEST_ENV=true
+
+                            echo "========================="
+                            echo "SONAR ANALYSIS"
+                            echo "========================="
+
+                            ${scannerHome}/bin/sonar-scanner \\
+                              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \\
+                              -Dsonar.sources=. \\
+                              -Dsonar.python.version=3 \\
+                              -Dsonar.host.url=$SONAR_HOST_URL \\
+                              -Dsonar.login=$SONAR_AUTH_TOKEN \\
+                              -Dsonar.python.coverage.reportPaths=coverage.xml \\
+                              -Dsonar.coverage.exclusions=tests/**,__pycache__/**,.pytest_cache/**,venv/**
+
+                            echo "========================="
+                            echo "SONAR FINALIZADO"
+                            echo "========================="
+                        """
                     }
-                    devopsPipeline.sonarAnalysis()
                 }
             }
         }
 
+        // =========================
+        // QUALITY GATE
+        // =========================
         stage('Quality Gate') {
+
             steps {
-                script {
-                    devopsPipeline.qualityGate()
+
+                timeout(time: 10, unit: 'MINUTES') {
+
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
 
+        // =========================
+        // DOCKER BUILDX
+        // =========================
         stage('Docker Buildx Setup') {
+
             steps {
+
                 sh '''
                     set -e
+
+                    echo "========================="
+                    echo "CONFIGURANDO BUILDX"
+                    echo "========================="
+
                     docker run --privileged --rm tonistiigi/binfmt --install all
+
                     docker buildx create --name multiarch_builder --use || true
+
                     docker buildx inspect --bootstrap
                 '''
             }
         }
 
+        // =========================
+        // DOCKER BUILD + PUSH
+        // =========================
         stage('Docker Build & Push (ARM)') {
+
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
 
                     sh '''
                         set -e
 
+                        echo "========================="
+                        echo "DOCKER LOGIN"
+                        echo "========================="
+
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        echo "========================="
+                        echo "BUILD API"
+                        echo "========================="
 
                         docker buildx build \
                           --platform linux/arm/v7 \
@@ -110,52 +224,106 @@ pipeline {
                           -t $DOCKER_IMAGE_API:latest \
                           --push .
 
+                        echo "========================="
+                        echo "BUILD BOT"
+                        echo "========================="
+
                         docker buildx build \
                           --platform linux/arm/v7 \
                           -f Dockerfile.bot \
                           -t $DOCKER_IMAGE_BOT:latest \
                           --push .
+
+                        echo "========================="
+                        echo "PUSH FINALIZADO"
+                        echo "========================="
                     '''
                 }
             }
         }
 
+        // =========================
+        // DEPLOY
+        // =========================
         stage('Deploy (Raspberry - Docker Compose)') {
+
             steps {
+
                 withCredentials([
-                    string(credentialsId: 'telegram-token-id', variable: 'TELEGRAM_TOKEN'),
-                    string(credentialsId: 'telegram-admin-id', variable: 'ADMIN_CHAT_ID'),
-                    string(credentialsId: 'supabase-db-url', variable: 'DATABASE_URL')
+
+                    string(
+                        credentialsId: 'telegram-token-id',
+                        variable: 'TELEGRAM_TOKEN'
+                    ),
+
+                    string(
+                        credentialsId: 'telegram-admin-id',
+                        variable: 'ADMIN_CHAT_ID'
+                    ),
+
+                    string(
+                        credentialsId: 'supabase-db-url',
+                        variable: 'DATABASE_URL'
+                    )
+
                 ]) {
+
                     sh '''
                         set -e
 
-                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" << EOF
+                        echo "========================="
+                        echo "INICIANDO DEPLOY"
+                        echo "========================="
+
+                        ssh -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$VM_USER@$VM_IP" << EOF
+
 set -e
 
-# Clone ou atualiza repo
+echo "========================="
+echo "ATUALIZANDO REPOSITÓRIO"
+echo "========================="
+
 if [ ! -d "$APP_DIR" ]; then
     git clone -b $BRANCH $REPO_URL $APP_DIR
 fi
 
 cd $APP_DIR
+
 git checkout $BRANCH
 git pull origin $BRANCH
 
-# 🔥 CRIA .env AUTOMATICAMENTE
+echo "========================="
+echo "CRIANDO .ENV"
+echo "========================="
+
 cat > .env <<EOL
 TELEGRAM_TOKEN=$TELEGRAM_TOKEN
-ADMIN_CHAT_ID=$ADMIN_CHAT_ID
+TELEGRAM_CHAT_ID=$ADMIN_CHAT_ID
 DATABASE_URL=$DATABASE_URL
 EOL
 
-# Pull imagens
+echo "========================="
+echo "DOCKER PULL"
+echo "========================="
+
 docker pull $DOCKER_IMAGE_API:latest
 docker pull $DOCKER_IMAGE_BOT:latest
 
-# Restart stack
-docker compose down || true
-docker compose up -d
+echo "========================="
+echo "RECRIANDO STACK"
+echo "========================="
+
+docker compose down --remove-orphans || true
+
+docker compose pull
+
+docker compose up -d --force-recreate
+
+echo "========================="
+echo "DEPLOY FINALIZADO"
+echo "========================="
 
 EOF
                     '''
@@ -164,17 +332,28 @@ EOF
         }
     }
 
+    // =========================
+    // POST
+    // =========================
     post {
+
         always {
+
+            echo "========================="
+            echo "LIMPANDO WORKSPACE"
+            echo "========================="
+
             cleanWs()
         }
 
         success {
-            echo "✅ Pipeline executado com sucesso"
+
+            echo "✅ PIPELINE EXECUTADO COM SUCESSO"
         }
 
         failure {
-            echo "❌ Pipeline falhou"
+
+            echo "❌ PIPELINE FALHOU"
         }
     }
 }

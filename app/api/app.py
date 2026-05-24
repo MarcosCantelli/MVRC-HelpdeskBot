@@ -23,10 +23,14 @@ ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
 # ==============================
 # INIT DB
 # ==============================
-try:
-    Base.metadata.create_all(bind=engine)
-except Exception as e:
-    logger.exception("Erro ao inicializar banco de dados")
+def init_db():
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception:
+        logger.exception("Erro ao inicializar banco de dados")
+
+
+init_db()
 
 
 # ==============================
