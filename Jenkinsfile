@@ -1,4 +1,3 @@
-```groovy
 @Library('shared-lib') _
 
 pipeline {
@@ -423,4 +422,3 @@ EOF
         }
     }
 }
-```
