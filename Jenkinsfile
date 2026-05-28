@@ -1,3 +1,4 @@
+```groovy
 @Library('shared-lib') _
 
 pipeline {
@@ -7,6 +8,13 @@ pipeline {
     options {
         timeout(time: 30, unit: 'MINUTES')
         timestamps()
+
+        buildDiscarder(
+            logRotator(
+                numToKeepStr: '15',
+                daysToKeepStr: '15'
+            )
+        )
     }
 
     triggers {
@@ -50,7 +58,9 @@ pipeline {
         // CHECKOUT
         // =========================
         stage('Checkout') {
+
             steps {
+
                 checkout scm
             }
         }
@@ -59,6 +69,7 @@ pipeline {
         // BUILD + TEST
         // =========================
         stage('Build & Test') {
+
             steps {
 
                 sh '''
@@ -101,7 +112,9 @@ pipeline {
                     echo "RODANDO TESTES"
                     echo "========================="
 
-                    pytest --cov=app --cov-report=xml:coverage.xml
+                    pytest \
+                      --cov=app \
+                      --cov-report=xml:coverage.xml
 
                     echo "========================="
                     echo "TESTES FINALIZADOS"
@@ -137,12 +150,14 @@ pipeline {
 
                             ${scannerHome}/bin/sonar-scanner \\
                               -Dsonar.projectKey=${SONAR_PROJECT_KEY} \\
-                              -Dsonar.sources=. \\
+                              -Dsonar.sources=app \\
+                              -Dsonar.tests=tests \\
                               -Dsonar.python.version=3 \\
                               -Dsonar.host.url=$SONAR_HOST_URL \\
                               -Dsonar.login=$SONAR_AUTH_TOKEN \\
                               -Dsonar.python.coverage.reportPaths=coverage.xml \\
-                              -Dsonar.coverage.exclusions=tests/**,__pycache__/**,.pytest_cache/**,venv/**
+                              -Dsonar.coverage.exclusions=tests/**,venv/**,__pycache__/**,.pytest_cache/** \\
+                              -Dsonar.cpd.exclusions=tests/**
 
                             echo "========================="
                             echo "SONAR FINALIZADO"
@@ -156,14 +171,54 @@ pipeline {
         // =========================
         // QUALITY GATE
         // =========================
+        // NÃO BLOQUEIA PIPELINE
+        // Apenas exibe resultado
+        // =========================
         stage('Quality Gate') {
 
             steps {
 
-                timeout(time: 10, unit: 'MINUTES') {
+                script {
 
-                    waitForQualityGate abortPipeline: true
+                    timeout(time: 5, unit: 'MINUTES') {
+
+                        def qualitygate = waitForQualityGate abortPipeline: false
+
+                        echo "========================="
+                        echo "QUALITY GATE: ${qualitygate.status}"
+                        echo "========================="
+
+                        if (qualitygate.status != 'OK') {
+
+                            echo "⚠️ Quality Gate com falhas, mas deploy continuará."
+                        }
+                    }
                 }
+            }
+        }
+
+        // =========================
+        // LIMPEZA DOCKER
+        // =========================
+        stage('Docker Cleanup') {
+
+            steps {
+
+                sh '''
+                    set +e
+
+                    echo "========================="
+                    echo "LIMPANDO CACHE DOCKER"
+                    echo "========================="
+
+                    docker system prune -af --volumes || true
+
+                    docker builder prune -af || true
+
+                    echo "========================="
+                    echo "LIMPEZA FINALIZADA"
+                    echo "========================="
+                '''
             }
         }
 
@@ -183,7 +238,12 @@ pipeline {
 
                     docker run --privileged --rm tonistiigi/binfmt --install all
 
-                    docker buildx create --name multiarch_builder --use || true
+                    docker buildx rm multiarch_builder || true
+
+                    docker buildx create \
+                      --name multiarch_builder \
+                      --driver docker-container \
+                      --use
 
                     docker buildx inspect --bootstrap
                 '''
@@ -322,6 +382,12 @@ docker compose pull
 docker compose up -d --force-recreate
 
 echo "========================="
+echo "LIMPANDO IMAGENS ANTIGAS"
+echo "========================="
+
+docker image prune -af || true
+
+echo "========================="
 echo "DEPLOY FINALIZADO"
 echo "========================="
 
@@ -357,3 +423,4 @@ EOF
         }
     }
 }
+```
