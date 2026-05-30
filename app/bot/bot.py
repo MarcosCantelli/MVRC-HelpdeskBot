@@ -131,53 +131,23 @@ def enviar_ticket(payload, request_func=None):
     request_func = request_func or requests.post
 
     try:
-        url = f"{API_URL}/ticket"
-
-        print(f"[BOT] Enviando ticket para: {url}")
-        print(f"[BOT] Payload: {payload}")
-
         try:
             response = request_func(
-                url,
+                f"{API_URL}/ticket",
                 json=payload,
-                timeout=10
+                timeout=5
             )
         except TypeError:
             response = request_func(
-                url,
+                f"{API_URL}/ticket",
                 json=payload
             )
 
-        print(f"[BOT] Status Code: {response.status_code}")
-        print(f"[BOT] Response: {response.text}")
+        if response and hasattr(response, "json"):
+            return response.json()
 
-        if response.status_code not in [200, 201]:
-            return {
-                "error": f"HTTP {response.status_code}"
-            }
+        return None
 
-        return response.json()
-
-    except Exception as e:
-        print(f"[BOT] ERRO: {e}")
-        return {
-            "error": str(e)
-        }
-
-
-def listar_tickets():
-    try:
-        return requests.get(f"{API_URL}/tickets").json()
-    except Exception:
-        return []
-
-
-def fechar_ticket(ticket_id, admin):
-    try:
-        return requests.post(
-            f"{API_URL}/ticket/{ticket_id}/close",
-            json={"admin": admin},
-        ).json()
     except Exception:
         return None
 
