@@ -427,7 +427,6 @@ def run_bot(token=None):
 
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
-        context.user_data["step"] = "tipo"
 
         user_name = get_user(update)
 
@@ -443,6 +442,8 @@ def run_bot(token=None):
             )
             context.user_data["step"] = "admin_menu"
         else:
+            context.user_data["step"] = "descricao"
+
             await update.message.reply_text(
                 f"Bem-vindo {user_name}! Sou o assistente do Helpdesk.\n\nComo posso ajudá-lo hoje?"
             )
@@ -536,6 +537,8 @@ def run_bot(token=None):
             await adicionar_observacao_admin(update, context, text)
             return
 
+        # Mantém compatibilidade com testes: passo 'tipo' e 'equipamento' disponíveis,
+        # mas o /start não pergunta por eles para usuários comuns.
         if step == "tipo":
             if not text:
                 await update.message.reply_text(
@@ -582,6 +585,8 @@ def run_bot(token=None):
                 return
 
             context.user_data["descricao"] = text
+            # salvar sugestão da IA para incluir no payload se for necessário
+            context.user_data["sugestao"] = sugerir_solucao(text)
 
             if problema_simples(text):
                 await update.message.reply_text(
