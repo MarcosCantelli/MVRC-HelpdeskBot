@@ -68,9 +68,7 @@ def sugerir_solucao(texto):
         )
 
     if any(x in texto for x in ["travando", "lento", "lentidão"]):
-        return (
-            "💻 Feche programas desnecessários e reinicie o computador."
-        )
+        return "💻 Tente reiniciar o computador e fechar programas desnecessários."
 
     if any(x in texto for x in ["senha", "login", "acesso"]):
         return (
@@ -92,19 +90,22 @@ def responder_automatico(texto):
 
     texto = texto.lower()
 
-    if any(x in texto for x in ["internet", "wifi", "rede"]):
-        return "🌐 Identifiquei um possível problema de rede."
+    if "sem conexão" in texto:
+        return "❌ Verificar conexão com a internet e cabos de rede."
 
-    if any(x in texto for x in ["impressora", "imprimir"]):
-        return "🖨️ Identifiquei um possível problema de impressão."
+    if "conexão" in texto and "internet" in texto:
+        return (
+            "🌐 Problema de conexão detectado. "
+            "Verifique sua conexão com a internet."
+        )
 
-    if any(x in texto for x in ["senha", "login", "acesso"]):
-        return "🔐 Identifiquei um possível problema de acesso."
+    if "internet" in texto:
+        return "🌐 Reinicie o roteador e verifique sua conexão."
 
-    if any(x in texto for x in ["travando", "lento"]):
-        return "💻 Identifiquei um possível problema de desempenho."
-
-    return "🤖 Entendi sua solicitação."
+    return (
+        "🤖 Caso o problema persista, "
+        "entre em contato com o suporte."
+    )
 
 
 def problema_simples(texto):
@@ -127,9 +128,20 @@ def criar_payload(user, context):
     return {
         "user": user,
         "description": context.get("descricao") or context.get("description"),
-        "category": "auto",
-        "subcategory": "auto",
-        "ai_suggestion": context.get("sugestao") or context.get("ai"),
+        "category": (
+            context.get("categoria")
+            or context.get("category")
+            or "auto"
+        ),
+        "subcategory": (
+            context.get("dispositivo")
+            or context.get("subcategory")
+            or ""
+        ),
+        "ai_suggestion": (
+            context.get("sugestao")
+            or context.get("ai", "")
+        ),
     }
 
 
@@ -415,7 +427,7 @@ def run_bot(token=None):
 
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
-        context.user_data["step"] = "descricao"
+        context.user_data["step"] = "tipo"
 
         user_name = get_user(update)
 
@@ -524,27 +536,75 @@ def run_bot(token=None):
             await adicionar_observacao_admin(update, context, text)
             return
 
+        if step == "tipo":
+            if not text:
+                await update.message.reply_text(
+                    "Você quer hardware ou software?"
+                )
+                return
+
+            if "hardware" in text.lower():
+                context.user_data["categoria"] = "hardware"
+            elif "software" in text.lower():
+                context.user_data["categoria"] = "software"
+            else:
+                await update.message.reply_text(
+                    "Escolha hardware ou software."
+                )
+                return
+
+            context.user_data["step"] = "equipamento"
+            await update.message.reply_text(
+                "Qual equipamento?"
+            )
+            return
+
+        if step == "equipamento":
+            if not text:
+                await update.message.reply_text(
+                    "Qual equipamento?"
+                )
+                return
+
+            context.user_data["dispositivo"] = text
+            context.user_data["step"] = "descricao"
+
+            await update.message.reply_text(
+                "Descreva o problema."
+            )
+            return
+
         if step == "descricao":
+            if not text:
+                await update.message.reply_text(
+                    "Descreva o problema."
+                )
+                return
+
             context.user_data["descricao"] = text
-        
-            await update.message.reply_text(
-                responder_automatico(text)
-            )
-        
-            await update.message.reply_text(
-                sugerir_solucao(text)
-            )
-        
-            context.user_data["step"] = "aguardando_confirmacao"
-        
-            await update.message.reply_text(
-                "O problema foi resolvido com essa orientação? (sim/não)"
-            )
-        
+
+            if problema_simples(text):
+                await update.message.reply_text(
+                    responder_automatico(text)
+                )
+                await update.message.reply_text(
+                    sugerir_solucao(text)
+                )
+                context.user_data["step"] = "aguardando_confirmacao"
+                await update.message.reply_text(
+                    "O problema foi resolvido com essa orientação? (sim/não)"
+                )
+            else:
+                await criar_ticket(
+                    update,
+                    user,
+                    context.user_data
+                )
+                context.user_data["step"] = "finalizado"
+
             return
 
         if step == "aguardando_confirmacao":
-
             if "sim" in text.lower():
                 await update.message.reply_text(
                     "✅ Ótimo! Fico feliz em ajudar."
@@ -555,7 +615,7 @@ def run_bot(token=None):
                     user,
                     context.user_data
                 )
-        
+
             context.user_data["step"] = "finalizado"
             return
 
