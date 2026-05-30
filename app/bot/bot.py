@@ -150,6 +150,48 @@ def enviar_ticket(payload, request_func=None):
 
     except Exception:
         return None
+    
+    
+# =========================
+# API - ADMIN
+# =========================
+
+def listar_tickets(request_func=None):
+    request_func = request_func or requests.get
+
+    try:
+        response = request_func(
+            f"{API_URL}/tickets"
+        )
+
+        if hasattr(response, "json"):
+            return response.json()
+
+        return []
+
+    except Exception:
+        return []
+
+
+def fechar_ticket(ticket_id, admin=None, request_func=None):
+    request_func = request_func or requests.patch
+
+    try:
+        response = request_func(
+            f"{API_URL}/ticket/{ticket_id}/status",
+            json={
+                "status": "encerrado",
+                "admin": admin
+            }
+        )
+
+        if hasattr(response, "json"):
+            return response.json()
+
+        return True
+
+    except Exception:
+        return None
 
 
 # =========================
