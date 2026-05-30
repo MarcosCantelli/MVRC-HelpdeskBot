@@ -173,22 +173,19 @@ def listar_tickets(request_func=None):
         return []
 
 
-def fechar_ticket(ticket_id, admin=None, request_func=None):
-    request_func = request_func or requests.patch
+def fechar_ticket(ticket_id, admin, request_func=None):
+    request_func = request_func or requests.post
 
     try:
         response = request_func(
-            f"{API_URL}/ticket/{ticket_id}/status",
-            json={
-                "status": "encerrado",
-                "admin": admin
-            }
+            f"{API_URL}/ticket/{ticket_id}/close",
+            json={"admin": admin}
         )
 
-        if hasattr(response, "json"):
+        if response and hasattr(response, "json"):
             return response.json()
 
-        return True
+        return None
 
     except Exception:
         return None
