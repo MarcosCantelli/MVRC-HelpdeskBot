@@ -25,14 +25,21 @@ ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
 # ==============================
 def init_db():
     try:
+        print("=" * 50)
+        print("INICIALIZANDO BANCO")
+        print("=" * 50)
+
         Base.metadata.create_all(bind=engine)
-    except Exception:
-        logger.exception("Erro ao inicializar banco de dados")
 
+        print("BANCO INICIALIZADO COM SUCESSO")
 
-init_db()
-
-
+    except Exception as e:
+        print("=" * 50)
+        print("ERRO AO INICIALIZAR BANCO")
+        print(str(e))
+        print("=" * 50)
+        raise
+    
 # ==============================
 # GERAR CÓDIGO
 # ==============================
