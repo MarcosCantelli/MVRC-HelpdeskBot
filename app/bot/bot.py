@@ -13,7 +13,10 @@ import os
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-API_URL = os.getenv("API_URL", "http://helpdesk-api:5000")
+API_URL = os.getenv(
+    "API_URL",
+    "http://helpdesk-api:5000"
+).rstrip("/")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
@@ -128,18 +131,38 @@ def enviar_ticket(payload, request_func=None):
     request_func = request_func or requests.post
 
     try:
+        url = f"{API_URL}/ticket"
+
+        print(f"[BOT] Enviando ticket para: {url}")
+        print(f"[BOT] Payload: {payload}")
+
         try:
-            response = request_func(f"{API_URL}/ticket", json=payload, timeout=5)
+            response = request_func(
+                url,
+                json=payload,
+                timeout=10
+            )
         except TypeError:
-            response = request_func(f"{API_URL}/ticket", json=payload)
+            response = request_func(
+                url,
+                json=payload
+            )
 
-        if response and hasattr(response, "json"):
-            return response.json()
+        print(f"[BOT] Status Code: {response.status_code}")
+        print(f"[BOT] Response: {response.text}")
 
-        return None
+        if response.status_code not in [200, 201]:
+            return {
+                "error": f"HTTP {response.status_code}"
+            }
 
-    except Exception:
-        return None
+        return response.json()
+
+    except Exception as e:
+        print(f"[BOT] ERRO: {e}")
+        return {
+            "error": str(e)
+        }
 
 
 def listar_tickets():
@@ -321,29 +344,49 @@ def notificar_telegram(user, ticket_code, request_func=None):
 # =========================
 # CRIAR TICKET
 # =========================
+
 async def criar_ticket(update, user, context):
     try:
         payload = criar_payload(user, context)
 
-        try:
-            data = enviar_ticket(payload)
-        except Exception as e:
-            await update.message.reply_text(f"❌ Erro de conexão com a API: {str(e)}")
-            return
+        data = enviar_ticket(payload)
+
+        print(f"[BOT] Resposta API: {data}")
 
         if data and data.get("id"):
-            codigo = data.get("ticket_code") or f"TK{str(data['id']).zfill(3)}"
 
-            await update.message.reply_text(f"🎟️ Chamado {codigo} criado!")
-            notificar_telegram(user, codigo)
-        elif data and data.get("error"):
-            await update.message.reply_text(f"❌ Erro da API: {data['error']}")
+            codigo = (
+                data.get("ticket_code")
+                or f"TK{str(data['id']).zfill(3)}"
+            )
+
+            await update.message.reply_text(
+                f"🎟️ Chamado {codigo} criado!"
+            )
+
+            notificar_telegram(
+                user,
+                codigo
+            )
+
         else:
-            await update.message.reply_text("❌ Erro ao criar chamado. Verifique a configuração da API.")
+
+            erro = (
+                data.get("error")
+                if isinstance(data, dict)
+                else "Erro desconhecido"
+            )
+
+            await update.message.reply_text(
+                f"❌ Erro ao criar chamado: {erro}"
+            )
 
     except Exception as e:
-        await update.message.reply_text(f"❌ Erro interno: {str(e)}")
+        print(f"[BOT] EXCEPTION: {e}")
 
+        await update.message.reply_text(
+            f"❌ Erro interno: {str(e)}"
+        )
 
 # =========================
 # BOT
