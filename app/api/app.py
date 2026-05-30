@@ -26,8 +26,14 @@ ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
 def init_db():
     try:
         logger.info("Inicializando banco de dados")
+
+        # garante carregamento do model
+        from app.models.ticket import Ticket
+
         Base.metadata.create_all(bind=engine)
+
         logger.info("Banco inicializado com sucesso")
+
     except Exception:
         logger.exception("Erro ao inicializar banco de dados")
         raise
@@ -286,3 +292,13 @@ def create_ticket():
 @app.route("/health")
 def health():
     return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    init_db()
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=False
+    )
