@@ -7,27 +7,24 @@ Base = declarative_base()
 
 TEST_ENV = os.getenv("TEST_ENV", "false").lower() == "true"
 
-# =========================
-# DATABASE URL
-# =========================
-
 if TEST_ENV:
     DATABASE_URL = "sqlite:///:memory:"
+    print("Modo TESTE habilitado")
 else:
     DATABASE_URL = os.getenv("DATABASE_URL")
 
     if not DATABASE_URL:
         raise ValueError("DATABASE_URL não configurada")
 
-# =========================
-# ENGINE CONFIG
-# =========================
+    print("DATABASE_URL carregada com sucesso")
 
 engine_kwargs = {}
 
 if DATABASE_URL.startswith("sqlite"):
     engine_kwargs = {
-        "connect_args": {"check_same_thread": False}
+        "connect_args": {
+            "check_same_thread": False
+        }
     }
 else:
     engine_kwargs = {
