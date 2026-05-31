@@ -537,43 +537,13 @@ def run_bot(token=None):
             await adicionar_observacao_admin(update, context, text)
             return
 
-        # Mantém compatibilidade com testes: passo 'tipo' e 'equipamento' disponíveis,
-        # mas o /start não pergunta por eles para usuários comuns.
+        # Compatibilidade com testes antigos: passo 'tipo' existe mas redireciona direto para 'descricao'
+        # sem mostrar perguntas para o usuário.
         if step == "tipo":
-            if not text:
-                await update.message.reply_text(
-                    "Você quer hardware ou software?"
-                )
-                return
-
-            if "hardware" in text.lower():
-                context.user_data["categoria"] = "hardware"
-            elif "software" in text.lower():
-                context.user_data["categoria"] = "software"
-            else:
-                await update.message.reply_text(
-                    "Escolha hardware ou software."
-                )
-                return
-
-            context.user_data["step"] = "equipamento"
-            await update.message.reply_text(
-                "Qual equipamento?"
-            )
-            return
-
-        if step == "equipamento":
-            if not text:
-                await update.message.reply_text(
-                    "Qual equipamento?"
-                )
-                return
-
-            context.user_data["dispositivo"] = text
             context.user_data["step"] = "descricao"
 
             await update.message.reply_text(
-                "Descreva o problema."
+                "Descreva o problema que está acontecendo:"
             )
             return
 
@@ -585,7 +555,6 @@ def run_bot(token=None):
                 return
 
             context.user_data["descricao"] = text
-            # salvar sugestão da IA para incluir no payload se for necessário
             context.user_data["sugestao"] = sugerir_solucao(text)
 
             if problema_simples(text):
