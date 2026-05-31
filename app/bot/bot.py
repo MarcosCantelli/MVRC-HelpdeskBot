@@ -442,7 +442,7 @@ def run_bot(token=None):
             )
             context.user_data["step"] = "admin_menu"
         else:
-            context.user_data["step"] = "descricao"
+            context.user_data["step"] = "tipo"
 
             await update.message.reply_text(
                 f"Bem-vindo {user_name}! Sou o assistente do Helpdesk.\n\nComo posso ajudá-lo hoje?"
