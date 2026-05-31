@@ -1,5 +1,5 @@
 import pytest
-from app.bot.bot import criar_payload, responder_automatico
+from app.bot.bot import criar_payload
 
 
 def test_criar_payload_completo():
@@ -24,18 +24,3 @@ def test_criar_payload_vazio():
 
     assert payload["user"] == "user2"
     assert payload["description"] is None
-
-
-def test_resposta_sem_conexao():
-    resp = responder_automatico("sem conexão com a internet")
-    assert "conexão" in resp.lower()
-
-
-def test_resposta_internet_generico():
-    resp = responder_automatico("internet caiu")
-    assert "roteador" in resp.lower()
-
-
-def test_resposta_fallback():
-    resp = responder_automatico("asdfghjkl")
-    assert "suporte" in resp.lower()

@@ -21,7 +21,7 @@ class FakeUpdate:
 async def test_handle_message_fluxo_simples(monkeypatch):
     """
     Fluxo:
-    start -> hardware -> equipamento -> descrição simples
+    tipo (redireciona) -> descrição simples
     NÃO deve abrir ticket
     """
 
@@ -39,24 +39,16 @@ async def test_handle_message_fluxo_simples(monkeypatch):
     context = SimpleNamespace(user_data={"step": "tipo"})
 
     # =========================
-    # STEP 1 - escolher hardware
+    # STEP 1 - tipo (redireciona para descricao)
     # =========================
-    update = FakeUpdate("🖥️ Hardware")
-    await message_handler.callback(update, context)
-
-    assert context.user_data["step"] == "equipamento"
-    assert len(update.message.texts) == 1
-
-    # =========================
-    # STEP 2 - escolher equipamento
-    # =========================
-    update = FakeUpdate("Computador")
+    update = FakeUpdate("qualquer texto")
     await message_handler.callback(update, context)
 
     assert context.user_data["step"] == "descricao"
+    assert len(update.message.texts) == 1
 
     # =========================
-    # STEP 3 - descrição simples
+    # STEP 2 - descrição simples
     # =========================
     update = FakeUpdate("internet lenta")
 
@@ -79,7 +71,8 @@ async def test_handle_message_fluxo_simples(monkeypatch):
 @pytest.mark.asyncio
 async def test_handle_message_abre_ticket(monkeypatch):
     """
-    Fluxo com problema complexo → deve abrir ticket
+    Fluxo com problema complexo:
+    descricao → aguardando_confirmacao → usuário escolhe abrir chamado → cria ticket
     """
 
     app = run_bot(token="fake-token")
@@ -91,8 +84,7 @@ async def test_handle_message_abre_ticket(monkeypatch):
                 message_handler = h
 
     context = SimpleNamespace(user_data={
-        "step": "descricao",
-        "categoria": "software"
+        "step": "descricao"
     })
 
     update = FakeUpdate("servidor caiu e não sobe")
@@ -104,15 +96,27 @@ async def test_handle_message_abre_ticket(monkeypatch):
 
     monkeypatch.setattr("app.bot.bot.criar_ticket", fake_ticket)
 
+    # Primeira mensagem com descrição
     await message_handler.callback(update, context)
 
+    # Vai para aguardando_confirmacao, NÃO cria ticket ainda
+    assert context.user_data["step"] == "aguardando_confirmacao"
+    assert called["ticket"] is False
+
+    # Usuário escolhe abrir chamado
+    update = FakeUpdate("❌ Abrir chamado agora")
+    await message_handler.callback(update, context)
+
+    # Agora cria ticket
     assert called["ticket"] is True
+    assert context.user_data["step"] == "finalizado"
     assert context.user_data["step"] == "finalizado"
 
 
 @pytest.mark.asyncio
 async def test_handle_message_confirmacao(monkeypatch):
     """
+    Step tentando_solucao:
     Usuário diz que NÃO resolveu → deve abrir ticket
     """
 
@@ -125,11 +129,11 @@ async def test_handle_message_confirmacao(monkeypatch):
                 message_handler = h
 
     context = SimpleNamespace(user_data={
-        "step": "aguardando_confirmacao",
+        "step": "tentando_solucao",
         "descricao": "internet lenta"
     })
 
-    update = FakeUpdate("não resolveu")
+    update = FakeUpdate("❌ Ainda não funcionou")
 
     called = {"ticket": False}
 
@@ -141,4 +145,5 @@ async def test_handle_message_confirmacao(monkeypatch):
     await message_handler.callback(update, context)
 
     assert called["ticket"] is True
+    assert context.user_data["step"] == "finalizado"
     assert context.user_data["step"] == "finalizado"

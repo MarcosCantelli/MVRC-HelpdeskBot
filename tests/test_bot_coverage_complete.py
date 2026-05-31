@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch, AsyncMock
 from telegram import Update, User
 from telegram.ext import ContextTypes
 from app.bot.bot import (
-    get_user, get_user_id, is_admin, responder_automatico,
-    problema_simples, listar_tickets, fechar_ticket
+    get_user, get_user_id, is_admin,
+    listar_tickets, fechar_ticket
 )
 
 
@@ -95,41 +95,6 @@ class TestBotUtils:
         with patch("app.bot.bot.ADMIN_IDS", ["12345"]):
             result = is_admin(mock_update)
             assert result is False
-
-    def test_responder_automatico_sem_conexao(self):
-        """Testa resposta específica para 'sem conexão'"""
-        result = responder_automatico("minha internet está sem conexão")
-        assert result == "❌ Verificar conexão com a internet e cabos de rede."
-
-    def test_responder_automatico_conexao_internet(self):
-        """Testa resposta específica para 'conexão' e 'internet'"""
-        result = responder_automatico("problema de conexão com internet")
-        assert result == "🌐 Problema de conexão detectado. Verifique sua conexão com a internet."
-
-    def test_problema_simples_lento(self):
-        """Testa problema_simples com palavra 'lento'"""
-        result = problema_simples("computador lento")
-        assert result is True
-
-    def test_problema_simples_travando(self):
-        """Testa problema_simples com palavra 'travando'"""
-        result = problema_simples("sistema travando")
-        assert result is True
-
-    def test_problema_simples_internet_lenta(self):
-        """Testa problema_simples com 'internet lenta'"""
-        result = problema_simples("internet lenta hoje")
-        assert result is True
-
-    def test_problema_simples_nao_simples(self):
-        """Testa problema_simples com problema não simples"""
-        result = problema_simples("computador não liga")
-        assert result is False
-
-    def test_problema_simples_none(self):
-        """Testa problema_simples com None"""
-        result = problema_simples(None)
-        assert result is False
 
     @patch("app.bot.bot.requests.get")
     def test_listar_tickets_sucesso(self, mock_get):

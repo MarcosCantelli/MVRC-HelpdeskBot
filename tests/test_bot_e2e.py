@@ -29,7 +29,7 @@ def get_handler(app, name):
 async def test_fluxo_completo_hardware_simples(monkeypatch):
     """
     Fluxo completo:
-    start -> hardware -> computador -> problema simples
+    start -> tipo (redireciona para descricao) -> problema simples
     NÃO abre ticket
     """
 
@@ -46,14 +46,8 @@ async def test_fluxo_completo_hardware_simples(monkeypatch):
 
     assert context.user_data["step"] == "tipo"
 
-    # HARDWARE
-    update = FakeUpdate("🖥️ Hardware")
-    await msg_handler.callback(update, context)
-
-    assert context.user_data["step"] == "equipamento"
-
-    # EQUIPAMENTO
-    update = FakeUpdate("Computador")
+    # TIPO (redireciona direto para descricao)
+    update = FakeUpdate("qualquer coisa")
     await msg_handler.callback(update, context)
 
     assert context.user_data["step"] == "descricao"
@@ -76,7 +70,7 @@ async def test_fluxo_completo_hardware_simples(monkeypatch):
 @pytest.mark.asyncio
 async def test_fluxo_completo_software_ticket(monkeypatch):
     """
-    Fluxo completo software → equipamento → problema complexo → abre ticket
+    Fluxo completo: tipo → descricao → oferece solução → usuário escolhe abrir chamado
     """
 
     app = run_bot(token="fake-token")
@@ -90,14 +84,8 @@ async def test_fluxo_completo_software_ticket(monkeypatch):
     update = FakeUpdate()
     await start_handler.callback(update, context)
 
-    # SOFTWARE
-    update = FakeUpdate("💻 Software")
-    await msg_handler.callback(update, context)
-
-    assert context.user_data["step"] == "equipamento"
-
-    # EQUIPAMENTO
-    update = FakeUpdate("Computador")
+    # TIPO (redireciona direto para descricao)
+    update = FakeUpdate("qualquer coisa")
     await msg_handler.callback(update, context)
 
     assert context.user_data["step"] == "descricao"
@@ -113,6 +101,15 @@ async def test_fluxo_completo_software_ticket(monkeypatch):
     update = FakeUpdate("erro crítico no sistema financeiro")
     await msg_handler.callback(update, context)
 
+    # Agora está em aguardando_confirmacao, oferecendo opções
+    assert context.user_data["step"] == "aguardando_confirmacao"
+    assert called["ticket"] is False  # Ainda não criou
+
+    # Usuário escolhe ABRIR CHAMADO
+    update = FakeUpdate("❌ Abrir chamado agora")
+    await msg_handler.callback(update, context)
+
+    # Agora sim cria ticket
     assert called["ticket"] is True
     assert context.user_data["step"] == "finalizado"
 

@@ -41,20 +41,20 @@ async def test_fluxo_hardware_completo(monkeypatch):
 
     monkeypatch.setattr("app.bot.bot.criar_ticket", fake_ticket)
 
-    # 1️⃣ hardware
-    update.message.text = "🖥️ Hardware"
-    await handler.callback(update, context)
-
-    assert "qual equipamento" in update.message.texts[-1].lower()
-
-    # 2️⃣ equipamento
-    update.message.text = "Computador"
+    # 1️⃣ tipo (redireciona direto para descricao)
+    update.message.text = "qualquer coisa"
     await handler.callback(update, context)
 
     assert "descreva o problema" in update.message.texts[-1].lower()
 
-    # 3️⃣ problema complexo → cria ticket
-    update.message.text = "computador com erro crítico"
+    # 2️⃣ problema complexo → vai para aguardando_confirmacao
+    update.message.text = "servidor inteiro caiu e não sobe"
+    await handler.callback(update, context)
+
+    assert context.user_data["step"] == "aguardando_confirmacao"
+
+    # 3️⃣ usuário escolhe abrir chamado → cria ticket
+    update.message.text = "❌ Abrir chamado agora"
     await handler.callback(update, context)
 
     assert "TICKET_CRIADO" in update.message.texts
@@ -71,19 +71,13 @@ async def test_fluxo_software_sem_ticket(monkeypatch):
     update = FakeUpdate()
     context = SimpleNamespace(user_data={})
 
-    # 1️⃣ software
-    update.message.text = "💻 Software"
-    await handler.callback(update, context)
-
-    assert "qual equipamento" in update.message.texts[-1].lower()
-
-    # 2️⃣ equipamento
-    update.message.text = "Computador"
+    # 1️⃣ tipo (redireciona direto para descricao)
+    update.message.text = "qualquer coisa"
     await handler.callback(update, context)
 
     assert "descreva o problema" in update.message.texts[-1].lower()
 
-    # 3️⃣ problema simples → NÃO cria ticket
+    # 2️⃣ problema simples → NÃO cria ticket
     update.message.text = "internet lenta"
     await handler.callback(update, context)
 
