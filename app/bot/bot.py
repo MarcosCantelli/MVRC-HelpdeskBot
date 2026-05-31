@@ -56,92 +56,141 @@ def is_admin(update):
 
 
 # =========================
-# IA
+# IA - SOLUÇÕES
 # =========================
 def sugerir_solucao(texto):
+    """
+    Sugere soluções baseadas no tipo de problema.
+    Oferece múltiplos cenários que o usuário pode tentar.
+    """
     texto = (texto or "").lower()
 
-    if any(x in texto for x in ["internet", "rede", "wifi", "conexão"]):
+    # INTERNET / REDE / WIFI
+    if any(x in texto for x in ["internet", "rede", "wifi", "conexão", "sem conexão"]):
         return (
-            "🌐 Verifique se o cabo de rede está conectado, "
-            "teste reiniciar o roteador e confirme se outros dispositivos acessam a internet."
+            "🌐 **Problemas de Internet/Rede**\n\n"
+            "Tente essas soluções em ordem:\n"
+            "1️⃣ Verifique se o cabo de rede está conectado na porta correta\n"
+            "2️⃣ Reinicie o roteador (desligue por 30 segundos)\n"
+            "3️⃣ Verificar status do WiFi no dispositivo\n"
+            "4️⃣ Abra o navegador e tente acessar uma página (ex: google.com)\n"
+            "5️⃣ Se outros dispositivos não conectam, problema pode ser do provedor\n\n"
+            "Se nenhuma solução funcionar, abriremos um chamado."
         )
 
-    if any(x in texto for x in ["travando", "lento", "lentidão"]):
-        return "💻 Tente reiniciar o computador e fechar programas desnecessários."
-
-    if any(x in texto for x in ["senha", "login", "acesso"]):
+    # COMPUTADOR LENTO / TRAVANDO
+    if any(x in texto for x in ["travando", "lento", "lentidão", "congelado", "trava"]):
         return (
-            "🔐 Verifique usuário e senha e tente novamente."
+            "💻 **Computador Lento ou Travando**\n\n"
+            "Tente essas soluções em ordem:\n"
+            "1️⃣ Reinicie o computador completamente\n"
+            "2️⃣ Feche programas desnecessários (abra Gerenciador de Tarefas com Ctrl+Shift+Esc)\n"
+            "3️⃣ Verifique espaço livre em disco (pode estar cheio)\n"
+            "4️⃣ Desative efeitos visuais desnecessários\n"
+            "5️⃣ Atualize drivers de vídeo e chipset\n"
+            "6️⃣ Faça varredura antivírus\n\n"
+            "Se continuar lento, pode haver problema de hardware."
         )
 
-    if any(x in texto for x in ["impressora", "imprimir"]):
+    # SENHA / LOGIN / ACESSO
+    if any(x in texto for x in ["senha", "login", "acesso", "não consigo entrar", "bloqueado"]):
         return (
-            "🖨️ Verifique conexão, papel e nível de tinta."
+            "🔐 **Problemas de Senha/Acesso**\n\n"
+            "Tente essas soluções em ordem:\n"
+            "1️⃣ Verifique se Caps Lock está ativado\n"
+            "2️⃣ Digite a senha com atenção (diferencia maiúsculas/minúsculas)\n"
+            "3️⃣ Pressione Ctrl+Alt+Delete e selecione 'Trocar Senha'\n"
+            "4️⃣ Use a opção 'Esqueci minha senha' no sistema\n"
+            "5️⃣ Se a conta está bloqueada, espere 15 minutos e tente novamente\n"
+            "6️⃣ Limpe cookies e cache do navegador\n\n"
+            "Se ainda não funcionar, nossa equipe pode redefinir sua senha."
         )
 
+    # IMPRESSORA
+    if any(x in texto for x in ["impressora", "imprimir", "não imprime", "papel"]):
+        return (
+            "🖨️ **Problemas com Impressora**\n\n"
+            "Tente essas soluções em ordem:\n"
+            "1️⃣ Verifique se a impressora está ligada e conectada\n"
+            "2️⃣ Verifique se há papel na bandeja\n"
+            "3️⃣ Veja o nível de tinta/toner\n"
+            "4️⃣ Abra 'Configurações > Dispositivos > Impressoras' e verifique fila\n"
+            "5️⃣ Reinicie a impressora\n"
+            "6️⃣ Limpe cabeçotes de impressão (se tiver opção)\n"
+            "7️⃣ Reinstale drivers da impressora\n\n"
+            "Se a impressora não aparecer, pode estar com problema de conexão."
+        )
+
+    # ERRO / TELA AZUL / CRASH
+    if any(x in texto for x in ["erro", "tela azul", "crash", "encerra", "fecha sozinho"]):
+        return (
+            "❌ **Erros e Crashes**\n\n"
+            "Tente essas soluções em ordem:\n"
+            "1️⃣ Reinicie o computador\n"
+            "2️⃣ Atualize Windows (Configurações > Atualização)\n"
+            "3️⃣ Desinstale programas instalados recentemente\n"
+            "4️⃣ Execute análise de disco (clique direito em C: > Propriedades > Ferramentas)\n"
+            "5️⃣ Use Restauração do Sistema para voltar a um ponto anterior\n"
+            "6️⃣ Faça varredura antivírus completa\n\n"
+            "Se continuar tendo erros, pode haver problema de hardware."
+        )
+
+    # EMAIL
+    if any(x in texto for x in ["email", "outlook", "gmail", "não consigo enviar"]):
+        return (
+            "📧 **Problemas com Email**\n\n"
+            "Tente essas soluções em ordem:\n"
+            "1️⃣ Verifique conexão de internet\n"
+            "2️⃣ Confirme usuário e senha estão corretos\n"
+            "3️⃣ Sincronize a conta (clique direito na conta > Sincronizar)\n"
+            "4️⃣ Atualize o Outlook ou reconfigure a conta\n"
+            "5️⃣ Limpe cache de senhas (Arquivo > Opções > Segurança)\n"
+            "6️⃣ Verifique se há limite de armazenamento atingido\n\n"
+            "Para problemas complexos, nossa equipe pode reconfigurar."
+        )
+
+    # ARQUIVO / PERDA DE DADOS
+    if any(x in texto for x in ["arquivo", "arquivo corrompido", "não abre", "perdi"]):
+        return (
+            "📁 **Problemas com Arquivos**\n\n"
+            "Tente essas soluções em ordem:\n"
+            "1️⃣ Verifique permissões do arquivo (clique direito > Propriedades)\n"
+            "2️⃣ Tente abrir com outro programa\n"
+            "3️⃣ Recupere de backup/versão anterior\n"
+            "4️⃣ Desative antivírus temporariamente\n"
+            "5️⃣ Se foi deletado, use software de recuperação\n"
+            "6️⃣ Escaneie com antivírus completo\n\n"
+            "Se o arquivo está corrompido, pode ser necessária recuperação profissional."
+        )
+
+    # RESPOSTA GENÉRICA
     return (
-        "💡 Posso abrir um chamado para que a equipe analise o problema."
+        "💡 **Solução Sugerida**\n\n"
+        "Para este tipo de problema:\n"
+        "1️⃣ Reinicie o computador\n"
+        "2️⃣ Feche navegadores e programas desnecessários\n"
+        "3️⃣ Atualize o Windows e drivers\n"
+        "4️⃣ Execute análise antivírus\n\n"
+        "Se o problema persistir, nossa equipe pode investigar."
     )
-
-def responder_automatico(texto):
-    if not texto:
-        return mensagem_padrao()
-
-    texto = texto.lower()
-
-    if "sem conexão" in texto:
-        return "❌ Verificar conexão com a internet e cabos de rede."
-
-    if "conexão" in texto and "internet" in texto:
-        return (
-            "🌐 Problema de conexão detectado. "
-            "Verifique sua conexão com a internet."
-        )
-
-    if "internet" in texto:
-        return "🌐 Reinicie o roteador e verifique sua conexão."
-
-    return (
-        "🤖 Caso o problema persista, "
-        "entre em contato com o suporte."
-    )
-
-
-def problema_simples(texto):
-    if not texto:
-        return False
-
-    texto = texto.lower()
-
-    simples = ["lento", "travando", "internet lenta"]
-
-    return any(s in texto for s in simples)
 
 
 # =========================
 # PAYLOAD
 # =========================
 def criar_payload(user, context):
+    """
+    Cria payload para envio de ticket.
+    Agora sem dependência de categoria/dispositivo (fluxo simplificado).
+    """
     context = context or {}
 
     return {
         "user": user,
         "description": context.get("descricao") or context.get("description"),
-        "category": (
-            context.get("categoria")
-            or context.get("category")
-            or "auto"
-        ),
-        "subcategory": (
-            context.get("dispositivo")
-            or context.get("subcategory")
-            or ""
-        ),
-        "ai_suggestion": (
-            context.get("sugestao")
-            or context.get("ai", "")
-        ),
+        "category": "auto",  # Categoria é determinada automaticamente pelo servidor
+        "subcategory": "",
+        "ai_suggestion": context.get("sugestao") or context.get("ai", ""),
     }
 
 
@@ -557,40 +606,103 @@ def run_bot(token=None):
             context.user_data["descricao"] = text
             context.user_data["sugestao"] = sugerir_solucao(text)
 
-            if problema_simples(text):
-                await update.message.reply_text(
-                    responder_automatico(text)
-                )
-                await update.message.reply_text(
-                    sugerir_solucao(text)
-                )
-                context.user_data["step"] = "aguardando_confirmacao"
-                await update.message.reply_text(
-                    "O problema foi resolvido com essa orientação? (sim/não)"
-                )
-            else:
+            # Mostra a sugestão
+            await update.message.reply_text(
+                context.user_data["sugestao"]
+            )
+
+            # Pergunta se o usuário quer tentar a solução ou abrir chamado
+            keyboard = [
+                ["✅ Vou tentar essa solução"],
+                ["❌ Abrir chamado agora"]
+            ]
+            await update.message.reply_text(
+                "\nVocê gostaria de tentar essas soluções ou prefere que abrirmos um chamado?",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            )
+            context.user_data["step"] = "aguardando_confirmacao"
+            return
+
+        if step == "aguardando_confirmacao":
+            if "abrir chamado" in text.lower():
+                # Abre chamado diretamente
                 await criar_ticket(
                     update,
                     user,
                     context.user_data
                 )
                 context.user_data["step"] = "finalizado"
+                return
 
+            if "vou tentar" in text.lower() or "sim" in text.lower():
+                # Usuário vai tentar a solução
+                keyboard = [
+                    ["✅ Problema resolvido!"],
+                    ["❌ Ainda não funcionou"],
+                    ["🔄 Nova descrição"]
+                ]
+                await update.message.reply_text(
+                    "Tente seguir os passos. Quando terminar, me avise!",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                )
+                context.user_data["step"] = "tentando_solucao"
+                return
+
+            # Se não entendeu, repete a pergunta
+            keyboard = [
+                ["✅ Vou tentar essa solução"],
+                ["❌ Abrir chamado agora"]
+            ]
+            await update.message.reply_text(
+                "Por favor, escolha uma opção:",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            )
             return
 
-        if step == "aguardando_confirmacao":
-            if "sim" in text.lower():
+        if step == "tentando_solucao":
+            if "problema resolvido" in text.lower() or "resolvido" in text.lower():
+                keyboard = [["🏠 Voltar ao início"]]
                 await update.message.reply_text(
-                    "✅ Ótimo! Fico feliz em ajudar."
+                    "✅ Ótimo! Fico feliz que conseguimos resolver!",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
                 )
-            else:
+                context.user_data["step"] = "finalizado"
+                return
+
+            if "ainda não funcionou" in text.lower() or "não funcionou" in text.lower():
+                # Abre chamado se o usuário não conseguiu resolver
                 await criar_ticket(
                     update,
                     user,
                     context.user_data
                 )
+                keyboard = [["🏠 Voltar ao início"]]
+                await update.message.reply_text(
+                    "Entendido! Abrimos um chamado para nossa equipe analisar.",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                )
+                context.user_data["step"] = "finalizado"
+                return
 
-            context.user_data["step"] = "finalizado"
+            if "nova descrição" in text.lower():
+                # Usuário quer descrever outro problema
+                context.user_data.clear()
+                context.user_data["step"] = "descricao"
+                await update.message.reply_text(
+                    "Descreva o novo problema:"
+                )
+                return
+
+            # Opções inválidas
+            keyboard = [
+                ["✅ Problema resolvido!"],
+                ["❌ Ainda não funcionou"],
+                ["🔄 Nova descrição"]
+            ]
+            await update.message.reply_text(
+                "Qual é o resultado? Escolha uma opção:",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            )
             return
 
     app.add_handler(CommandHandler("start", start))

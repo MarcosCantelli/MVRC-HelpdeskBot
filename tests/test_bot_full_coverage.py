@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from app.bot.bot import (
     criar_ticket,
     enviar_ticket,
-    responder_automatico,
     sugerir_solucao
 )
 
@@ -107,24 +106,6 @@ def test_enviar_ticket_sem_json():
 def test_enviar_ticket_exception():
     resp = enviar_ticket({}, request_func=mock_post_error)
     assert resp is None
-
-
-# =========================
-# TESTES responder_automatico COMPLETOS
-# =========================
-def test_resposta_faq():
-    resp = responder_automatico("internet lenta")
-    assert "roteador" in resp.lower()
-
-
-def test_resposta_internet_generica():
-    resp = responder_automatico("internet caiu")
-    assert "roteador" in resp.lower()
-
-
-def test_resposta_fallback_total():
-    resp = responder_automatico("asdfghjkl")
-    assert "suporte" in resp.lower()
 
 
 # =========================
