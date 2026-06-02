@@ -28,7 +28,7 @@ class TestAPITicketCreationSuccess:
         assert status == 201
         assert "id" in result
         assert result["status"] == "aberto"
-        assert result["ticket_code"].startswith("TKHW")
+        assert result["ticket_code"].startswith("TK")
 
     def test_create_ticket_software_category(self):
         """Testa criação com categoria software"""
@@ -41,7 +41,7 @@ class TestAPITicketCreationSuccess:
         result, status = create_ticket_service(data)
         
         assert status == 201
-        assert result["ticket_code"].startswith("TKSW")
+        assert result["ticket_code"].startswith("TK")
 
 
 class TestAPITicketCreationErrors:
@@ -160,8 +160,8 @@ class TestBotHandlersCompleteness:
         
         await handler.callback(update, context)
         
-        # Deve retornar mensagem de escolha inválida
-        assert any("hardware" in t.lower() or "software" in t.lower() 
+        # Deve responder com ajuda de fluxo, sem depender de hardware/software
+        assert any("descreva" in t.lower() or "problema" in t.lower() or "chamado" in t.lower() 
                    for t in update.message.texts)
 
     @pytest.mark.asyncio
@@ -195,14 +195,13 @@ class TestBotHandlersCompleteness:
                 self.effective_user = FakeUser()
         
         update = FakeUpdate()
-        context = SimpleNamespace(user_data={"step": "equipamento"})
-        update.message.text = "Notebook"
-        
-        await handler.callback(update, context)
-        
-        assert context.user_data["dispositivo"] == "Notebook"
-        assert context.user_data["step"] == "descricao"
+        context = SimpleNamespace(user_data={"step": "descricao"})
+        update.message.text = "Notebook com tela preta"
 
+        await handler.callback(update, context)
+
+        assert context.user_data["descricao"] == "Notebook com tela preta"
+        assert context.user_data["step"] == "aguardando_confirmacao"
     @pytest.mark.asyncio
     async def test_handle_message_description_simple_problem(self, monkeypatch):
         """Testa fluxo com problema simples (não cria ticket)"""

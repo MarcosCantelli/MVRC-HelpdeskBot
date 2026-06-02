@@ -19,13 +19,51 @@ API_URL = os.getenv(
 ).rstrip("/")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
+def get_admin_ids():
+    raw = os.getenv("ADMIN_IDS", "")
+    fallback = os.getenv("TELEGRAM_ADMIN_ID", "") or os.getenv("TELEGRAM_ADMIN_IDS", "")
+    values = [raw, fallback]
+    ids = []
+    for value in values:
+        for item in value.split(","):
+            candidate = item.strip()
+            if candidate:
+                ids.append(candidate)
+    return list(dict.fromkeys(ids))
+
+
+ADMIN_IDS = get_admin_ids()
 
 FAQ = {
     "internet lenta": "🔌 Reiniciar o roteador e verificar os cabos.",
     "computador não liga": "⚡ Verificar fonte e cabo de energia.",
     "impressora não imprime": "🖨️ Impressora: verificar conexão e tinta.",
 }
+
+
+def help_admin_text():
+    return (
+        "🛠️ Menu do administrador\n\n"
+        "1 - Listar chamados\n"
+        "2 - Abrir chamado\n"
+        "3 - Consultar / gerenciar chamado\n"
+        "4 - /help\n\n"
+        "Use os números ou as palavras exibidas para navegar."
+    )
+
+
+async def mostrar_menu_admin(update, context, mensagem=None):
+    keyboard = [
+        ["1 - Listar chamados"],
+        ["2 - Abrir chamado"],
+        ["3 - Consultar / gerenciar chamado"],
+        ["4 - /help"],
+    ]
+    await update.message.reply_text(
+        mensagem or help_admin_text(),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+    )
+    context.user_data["step"] = "admin_menu"
 
 
 # =========================
@@ -58,6 +96,24 @@ def is_admin(update):
 # =========================
 # IA - SOLUÇÕES
 # =========================
+def responder_automatico(texto):
+    if not texto:
+        return mensagem_padrao()
+
+    texto = texto.lower()
+
+    if "sem conexão" in texto:
+        return "❌ Verificar conexão com a internet e cabos de rede."
+
+    if "conexão" in texto and "internet" in texto:
+        return "🌐 Problema de conexão detectado. Verifique sua conexão com a internet."
+
+    if "internet" in texto:
+        return "🌐 Reinicie o roteador e verifique sua conexão."
+
+    return "🤖 Caso o problema persista, entre em contato com o suporte."
+
+
 def sugerir_solucao(texto):
     """
     Sugere soluções baseadas no tipo de problema.
@@ -83,7 +139,7 @@ def sugerir_solucao(texto):
         return (
             "💻 **Computador Lento ou Travando**\n\n"
             "Tente essas soluções em ordem:\n"
-            "1️⃣ Reinicie o computador completamente\n"
+            "1️⃣ Tente reiniciar o computador completamente\n"
             "2️⃣ Feche programas desnecessários (abra Gerenciador de Tarefas com Ctrl+Shift+Esc)\n"
             "3️⃣ Verifique espaço livre em disco (pode estar cheio)\n"
             "4️⃣ Desative efeitos visuais desnecessários\n"
@@ -181,15 +237,23 @@ def sugerir_solucao(texto):
 def criar_payload(user, context):
     """
     Cria payload para envio de ticket.
-    Agora sem dependência de categoria/dispositivo (fluxo simplificado).
+    Mantém compatibilidade com categoria e subcategoria quando existirem.
     """
     context = context or {}
 
     return {
         "user": user,
         "description": context.get("descricao") or context.get("description"),
-        "category": "auto",  # Categoria é determinada automaticamente pelo servidor
-        "subcategory": "",
+        "category": (
+            context.get("categoria")
+            or context.get("category")
+            or "auto"
+        ),
+        "subcategory": (
+            context.get("dispositivo")
+            or context.get("subcategory")
+            or ""
+        ),
         "ai_suggestion": context.get("sugestao") or context.get("ai", ""),
     }
 
@@ -342,16 +406,7 @@ async def gerenciar_ticket_admin(update, context, text):
         context.user_data["step"] = "adicionar_observacao"
         await update.message.reply_text("Digite a observação:")
     elif "voltar" in text.lower():
-        context.user_data["step"] = "admin_menu"
-        keyboard = [
-            ["🆕 Abrir chamado"],
-            ["📋 Listar chamados"],
-            ["🔍 Consultar chamado"]
-        ]
-        await update.message.reply_text(
-            "O que você gostaria de fazer?",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        )
+        await mostrar_menu_admin(update, context, "O que você gostaria de fazer?\n\n" + help_admin_text())
     else:
         await update.message.reply_text("Opção inválida.")
 
@@ -480,22 +535,32 @@ def run_bot(token=None):
         user_name = get_user(update)
 
         if is_admin(update):
-            keyboard = [
-                ["🆕 Abrir chamado"],
-                ["📋 Listar chamados"],
-                ["🔍 Consultar chamado"]
-            ]
             await update.message.reply_text(
-                f"Bem-vindo {user_name}, o que você gostaria de fazer?",
-                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+                f"Bem-vindo {user_name}!\n\n" + help_admin_text()
             )
-            context.user_data["step"] = "admin_menu"
+            await mostrar_menu_admin(update, context)
+            return
         else:
-            context.user_data["step"] = "tipo"
+            context.user_data.clear()
+            context.user_data["step"] = "descricao"
 
             await update.message.reply_text(
-                f"Bem-vindo {user_name}! Sou o assistente do Helpdesk.\n\nComo posso ajudá-lo hoje?"
+                f"Bem-vindo {user_name}! Sou o assistente do Helpdesk.\n\n"
+                "Descreva o problema que está acontecendo e eu tento ajudar rapidamente."
             )
+            await update.message.reply_text(
+                "Se preferir, você também pode abrir um chamado direto após a análise."
+            )
+
+    async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if is_admin(update):
+            await mostrar_menu_admin(update, context, help_admin_text())
+            return
+        await update.message.reply_text(
+            "💡 Comandos disponíveis:\n"
+            "/start - reiniciar o atendimento\n"
+            "/help - mostrar ajuda"
+        )
 
     async def tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
@@ -535,25 +600,35 @@ def run_bot(token=None):
         user = get_user(update)
 
         if step == "admin_menu":
-            if "abrir chamado" in text.lower():
-                context.user_data.clear()
-                context.user_data["step"] = "descricao"
+            text_lower = text.lower()
 
-                await update.message.reply_text(
-                    "Descreva o problema que está acontecendo:"
-                )
-                return
-
-            if "listar chamados" in text.lower():
+            if text_lower in ("1", "1 - listar chamados", "listar chamados", "listar"):
                 await listar_chamados_admin(update, context)
                 return
 
-            if "consultar chamado" in text.lower():
+            if text_lower in ("2", "2 - abrir chamado", "abrir chamado", "abrir"):
+                context.user_data.clear()
+                context.user_data["step"] = "descricao"
+                await update.message.reply_text("Descreva o problema que está acontecendo:")
+                return
+
+            if text_lower in (
+                "3",
+                "3 - consultar / gerenciar chamado",
+                "consultar / gerenciar chamado",
+                "consultar chamado",
+                "gerenciar chamado",
+                "entrar no chamado",
+            ):
                 context.user_data["step"] = "consultar_ticket"
                 await update.message.reply_text("Digite o número do ticket (ex: TKHW2024001):")
                 return
 
-            await update.message.reply_text("Escolha uma opção válida.")
+            if text_lower in ("4", "4 - /help", "help", "/help"):
+                await mostrar_menu_admin(update, context, help_admin_text())
+                return
+
+            await update.message.reply_text("Escolha uma opção válida.\n\n" + help_admin_text())
             return
 
         if step == "consultar_ticket":
@@ -566,16 +641,7 @@ def run_bot(token=None):
                 ticket_code = text.replace("📄 Ver ", "").strip()
                 await consultar_ticket_admin(update, context, ticket_code)
             elif "voltar" in text.lower():
-                context.user_data["step"] = "admin_menu"
-                keyboard = [
-                    ["🆕 Abrir chamado"],
-                    ["📋 Listar chamados"],
-                    ["🔍 Consultar chamado"]
-                ]
-                await update.message.reply_text(
-                    "O que você gostaria de fazer?",
-                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-                )
+                await mostrar_menu_admin(update, context, "O que você gostaria de fazer?\n\n" + help_admin_text())
             return
 
         if step == "gerenciar_ticket":
@@ -624,7 +690,9 @@ def run_bot(token=None):
             return
 
         if step == "aguardando_confirmacao":
-            if "abrir chamado" in text.lower():
+            text_lower = text.lower()
+
+            if "abrir chamado" in text_lower:
                 # Abre chamado diretamente
                 await criar_ticket(
                     update,
@@ -634,7 +702,21 @@ def run_bot(token=None):
                 context.user_data["step"] = "finalizado"
                 return
 
-            if "vou tentar" in text.lower() or "sim" in text.lower():
+            if "sim" in text_lower or "funcionou" in text_lower or "resolvido" in text_lower:
+                await update.message.reply_text("✅ Ótimo! Fico feliz em ajudar.")
+                context.user_data["step"] = "finalizado"
+                return
+
+            if "não" in text_lower or "nao" in text_lower or "não funcionou" in text_lower or "nao funcionou" in text_lower:
+                await criar_ticket(
+                    update,
+                    user,
+                    context.user_data
+                )
+                context.user_data["step"] = "finalizado"
+                return
+
+            if "vou tentar" in text_lower:
                 # Usuário vai tentar a solução
                 keyboard = [
                     ["✅ Problema resolvido!"],
@@ -706,6 +788,7 @@ def run_bot(token=None):
             return
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("tickets", tickets))
     app.add_handler(CommandHandler("close", close))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))

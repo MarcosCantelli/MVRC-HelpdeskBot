@@ -18,7 +18,19 @@ app = Flask(__name__)
 def utcnow():
     return datetime.now(timezone.utc)
 
-ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")
+def get_admin_ids():
+    raw = os.getenv("ADMIN_IDS", "")
+    fallback = os.getenv("TELEGRAM_ADMIN_ID", "") or os.getenv("TELEGRAM_ADMIN_IDS", "")
+    ids = []
+    for value in (raw, fallback):
+        for item in value.split(","):
+            candidate = item.strip()
+            if candidate:
+                ids.append(candidate)
+    return list(dict.fromkeys(ids))
+
+
+ADMIN_IDS = get_admin_ids()
 
 # ==============================
 # INIT DB
@@ -43,12 +55,11 @@ def init_db():
 # ==============================
 def gerar_ticket_code(db, category):
     ano = datetime.now(timezone.utc).year
-    prefixo = "HW" if category == "hardware" else "SW"
 
     total = db.query(func.count(Ticket.id)).scalar() or 0
     numero = str(total + 1).zfill(3)
 
-    return f"TK{prefixo}{ano}{numero}"
+    return f"TK{ano}{numero}"
 
 
 # ==============================
@@ -58,6 +69,7 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     if not data or not data.get("user") or not data.get("description"):
         return {"error": "Campos obrigatórios"}, 400
 
+    init_db()
     db = SessionLocal()
 
     try:
@@ -136,6 +148,7 @@ def list_tickets():
     db = None
 
     try:
+        init_db()
         db = SessionLocal()
         tickets = db.query(Ticket).all()
 
