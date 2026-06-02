@@ -1,5 +1,5 @@
 import pytest
-from app.bot.bot import enviar_ticket, sugerir_solucao
+from app.bot.bot import enviar_ticket, responder_automatico, sugerir_solucao
 
 
 # =========================

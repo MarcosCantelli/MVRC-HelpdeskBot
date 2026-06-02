@@ -44,12 +44,6 @@ async def test_fluxo_completo_hardware_simples(monkeypatch):
     update = FakeUpdate()
     await start_handler.callback(update, context)
 
-    assert context.user_data["step"] == "tipo"
-
-    # TIPO (redireciona direto para descricao)
-    update = FakeUpdate("qualquer coisa")
-    await msg_handler.callback(update, context)
-
     assert context.user_data["step"] == "descricao"
 
     # DESCRIÇÃO SIMPLES
@@ -83,10 +77,6 @@ async def test_fluxo_completo_software_ticket(monkeypatch):
     # START
     update = FakeUpdate()
     await start_handler.callback(update, context)
-
-    # TIPO (redireciona direto para descricao)
-    update = FakeUpdate("qualquer coisa")
-    await msg_handler.callback(update, context)
 
     assert context.user_data["step"] == "descricao"
 
