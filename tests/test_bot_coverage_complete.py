@@ -4,12 +4,25 @@ from telegram import Update, User
 from telegram.ext import ContextTypes
 from app.bot.bot import (
     get_user, get_user_id, is_admin,
-    listar_tickets, fechar_ticket
+    listar_tickets, fechar_ticket, run_bot
 )
 
 
 class TestBotUtils:
     """Testes para funções utilitárias do bot"""
+
+    @pytest.mark.asyncio
+    async def test_aliases_de_comandos_admin(self):
+        """Testa aliases em português para comandos administrativos."""
+        app = run_bot(token="fake-token")
+
+        commands = {
+            name for handler in app.handlers[0]
+            if hasattr(handler, "commands")
+            for name in handler.commands
+        }
+
+        assert {"lista", "entrar", "encerrar", "fechar"}.issubset(commands)
 
     def test_get_user_com_user(self):
         """Testa get_user quando update tem effective_user"""
