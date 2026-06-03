@@ -48,6 +48,7 @@ def help_admin_text():
         "2 - Abrir chamado\n"
         "3 - Consultar / gerenciar chamado\n"
         "4 - /help\n\n"
+        "Aliases úteis: /lista, /entrar, /encerrar.\n"
         "Use os números ou as palavras exibidas para navegar."
     )
 
@@ -305,6 +306,18 @@ def listar_tickets(request_func=None):
 
     except Exception:
         return []
+
+
+def buscar_ticket_por_codigo(ticket_code, request_func=None):
+    request_func = request_func or requests.get
+
+    try:
+        response = request_func(f"{API_URL}/ticket/{ticket_code}")
+        if response and hasattr(response, "json"):
+            return response.json()
+        return None
+    except Exception:
+        return None
 
 
 def fechar_ticket(ticket_id, admin, request_func=None):
@@ -579,19 +592,43 @@ def run_bot(token=None):
 
         await update.message.reply_text(msg)
 
+    async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await tickets(update, context)
+
+    async def entrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not is_admin(update):
+            await update.message.reply_text("❌ Acesso negado.")
+            return
+
+        context.user_data["step"] = "consultar_ticket"
+        await update.message.reply_text("Digite o código do chamado (ex: TK2026001):")
+
     async def close(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
             await update.message.reply_text("❌ Acesso negado.")
             return
 
         if not context.args:
-            await update.message.reply_text("Use: /close <id>")
+            await update.message.reply_text("Use: /close <id|codigo>")
             return
 
-        ticket_id = context.args[0]
-        fechar_ticket(ticket_id, get_user(update))
+        ticket_ref = context.args[0].strip()
+        ticket_id = ticket_ref
 
-        await update.message.reply_text(f"Ticket {ticket_id} fechado.")
+        if not ticket_ref.isdigit():
+            ticket_data = buscar_ticket_por_codigo(ticket_ref)
+            if ticket_data and ticket_data.get("id"):
+                ticket_id = str(ticket_data["id"])
+            else:
+                await update.message.reply_text("Ticket não encontrado.")
+                return
+
+        fechar_ticket(ticket_id, get_user_id(update))
+
+        await update.message.reply_text(f"Ticket {ticket_ref} encerrado.")
+
+    async def encerrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await close(update, context)
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text or ""
@@ -790,7 +827,11 @@ def run_bot(token=None):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("tickets", tickets))
+    app.add_handler(CommandHandler("lista", lista))
     app.add_handler(CommandHandler("close", close))
+    app.add_handler(CommandHandler("encerrar", encerrar))
+    app.add_handler(CommandHandler("entrar", entrar))
+    app.add_handler(CommandHandler("fechar", close))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
     return app
