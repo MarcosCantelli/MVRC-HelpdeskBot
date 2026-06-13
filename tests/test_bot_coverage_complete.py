@@ -134,6 +134,18 @@ class TestBotUtils:
             result = is_admin(mock_update)
             assert result is True
 
+    def test_is_admin_com_TELEGRAM_ADMIN_ID_hifen_uppercase_env(self):
+        """Testa is_admin com TELEGRAM-ADMIN-ID presente"""
+        mock_user = Mock()
+        mock_user.id = 22222
+
+        mock_update = Mock()
+        mock_update.effective_user = mock_user
+
+        with patch.dict(os.environ, {"TELEGRAM-ADMIN-ID": "22222"}, clear=False):
+            result = is_admin(mock_update)
+            assert result is True
+
     def test_is_admin_com_telegram_admin_id_underscore_env(self):
         """Testa is_admin com telegram_admin_id presente"""
         mock_user = Mock()
