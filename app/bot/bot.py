@@ -21,7 +21,12 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def get_admin_ids():
     raw = os.getenv("ADMIN_IDS", "")
-    fallback = os.getenv("TELEGRAM_ADMIN_ID", "") or os.getenv("TELEGRAM_ADMIN_IDS", "")
+    fallback = (
+        os.getenv("TELEGRAM_ADMIN_ID", "")
+        or os.getenv("TELEGRAM_ADMIN_IDS", "")
+        or os.getenv("telegram-admin-id", "")
+        or os.getenv("telegram-admin-ids", "")
+    )
     values = [raw, fallback]
     ids = []
     for value in values:
@@ -48,7 +53,7 @@ def help_admin_text():
         "2 - Abrir chamado\n"
         "3 - Consultar / gerenciar chamado\n"
         "4 - /help\n\n"
-        "Aliases úteis: /lista, /entrar, /encerrar.\n"
+        "Aliases úteis: /listar, /entrar, /encerrar.\n"
         "Use os números ou as palavras exibidas para navegar."
     )
 
@@ -346,17 +351,15 @@ async def listar_chamados_admin(update, context):
         response = requests.get(f"{API_URL}/tickets")
         if response.status_code == 200:
             tickets = response.json()
-            tickets_abertos = [t for t in tickets if t.get("status") == "aberto"]
-
-            if not tickets_abertos:
-                await update.message.reply_text("Nenhum ticket aberto encontrado.")
+            if not tickets:
+                await update.message.reply_text("Nenhum ticket encontrado.")
                 return
 
-            msg = "📋 Tickets abertos:\n\n"
+            msg = "📋 Chamados:\n\n"
             keyboard = []
 
-            for t in tickets_abertos:
-                msg += f"🎫 {t['code']} - {t['user']}\n"
+            for t in tickets:
+                msg += f"🎫 {t['code']} | {t['user']} | {t['status']}\n"
                 keyboard.append([f"📄 Ver {t['code']}"])
 
             keyboard.append(["↩️ Voltar"])
@@ -465,18 +468,28 @@ async def adicionar_observacao_admin(update, context, observacao):
 # =========================
 # NOTIFICAÇÃO
 # =========================
-def notificar_telegram(user, ticket_code, request_func=None):
+def notificar_telegram(user, ticket_code, summary=None, request_func=None):
     if not TELEGRAM_CHAT_ID:
         return None
 
     request_func = request_func or requests.post
+
+    texto_resumo = summary or "Sem descrição adicional"
+    texto_resumo = texto_resumo.strip()
+    if len(texto_resumo) > 120:
+        texto_resumo = texto_resumo[:117].rstrip() + "..."
 
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
-            "text": f"🚨 Novo chamado!\n👤 {user}\n🎟️ {ticket_code}",
+            "text": (
+                f"🚨 Novo chamado aberto!\n"
+                f"🎟️ {ticket_code}\n"
+                f"👤 {user}\n"
+                f"📌 {texto_resumo}"
+            ),
         }
 
         try:
@@ -513,7 +526,8 @@ async def criar_ticket(update, user, context):
 
             notificar_telegram(
                 user,
-                codigo
+                codigo,
+                summary=context.get("descricao")
             )
 
         else:
@@ -549,7 +563,10 @@ def run_bot(token=None):
 
         if is_admin(update):
             await update.message.reply_text(
-                f"Bem-vindo {user_name}!\n\n" + help_admin_text()
+                f"Olá {user_name}, o que você gostaria de fazer?\n\n"
+                "- /listar para listar os chamados\n"
+                "- /entrar para atender algum chamado\n"
+                "- /help para ver o menu de administração\n"
             )
             await mostrar_menu_admin(update, context)
             return
@@ -592,8 +609,12 @@ def run_bot(token=None):
 
         await update.message.reply_text(msg)
 
-    async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await tickets(update, context)
+    async def listar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not is_admin(update):
+            await update.message.reply_text("❌ Acesso negado.")
+            return
+
+        await listar_chamados_admin(update, context)
 
     async def entrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
@@ -827,10 +848,10 @@ def run_bot(token=None):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("tickets", tickets))
-    app.add_handler(CommandHandler("lista", lista))
+    app.add_handler(CommandHandler(["lista", "listar"], listar))
+    app.add_handler(CommandHandler("entrar", entrar))
     app.add_handler(CommandHandler("close", close))
     app.add_handler(CommandHandler("encerrar", encerrar))
-    app.add_handler(CommandHandler("entrar", entrar))
     app.add_handler(CommandHandler("fechar", close))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
