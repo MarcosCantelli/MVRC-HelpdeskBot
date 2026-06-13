@@ -26,6 +26,8 @@ def get_admin_ids():
         or os.getenv("TELEGRAM_ADMIN_IDS", "")
         or os.getenv("telegram-admin-id", "")
         or os.getenv("telegram-admin-ids", "")
+        or os.getenv("telegram_admin_id", "")
+        or os.getenv("telegram_admin_ids", "")
     )
     values = [raw, fallback]
     ids = []
@@ -96,7 +98,10 @@ def get_user_id(update):
 
 
 def is_admin(update):
-    return bool(get_user_id(update)) and get_user_id(update) in ADMIN_IDS
+    user_id = get_user_id(update)
+    if not user_id:
+        return False
+    return user_id in get_admin_ids()
 
 
 # =========================
@@ -614,7 +619,7 @@ def run_bot(token=None):
             await update.message.reply_text("❌ Acesso negado.")
             return
 
-        await listar_chamados_admin(update, context)
+        await tickets(update, context)
 
     async def entrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
