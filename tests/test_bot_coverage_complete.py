@@ -1,3 +1,4 @@
+import os
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
 from telegram import Update, User
@@ -83,8 +84,8 @@ class TestBotUtils:
         mock_update = Mock()
         mock_update.effective_user = mock_user
 
-        # Mock das variáveis globais
-        with patch("app.bot.bot.ADMIN_IDS", ["12345"]):
+        # Mock de env pois a checagem agora recarrega os admin IDs dinamicamente
+        with patch.dict(os.environ, {"TELEGRAM_ADMIN_ID": "12345"}, clear=False):
             result = is_admin(mock_update)
             assert result is True
 
@@ -96,7 +97,7 @@ class TestBotUtils:
         mock_update = Mock()
         mock_update.effective_user = mock_user
 
-        with patch("app.bot.bot.ADMIN_IDS", ["12345"]):
+        with patch.dict(os.environ, {"TELEGRAM_ADMIN_ID": "12345"}, clear=False):
             result = is_admin(mock_update)
             assert result is False
 
@@ -105,9 +106,45 @@ class TestBotUtils:
         mock_update = Mock()
         mock_update.effective_user = None
 
-        with patch("app.bot.bot.ADMIN_IDS", ["12345"]):
+        with patch.dict(os.environ, {"TELEGRAM_ADMIN_ID": "12345"}, clear=False):
             result = is_admin(mock_update)
             assert result is False
+
+    def test_is_admin_com_telegram_admin_id_env(self):
+        """Testa is_admin com TELEGRAM_ADMIN_ID presente"""
+        mock_user = Mock()
+        mock_user.id = 12345
+
+        mock_update = Mock()
+        mock_update.effective_user = mock_user
+
+        with patch.dict(os.environ, {"TELEGRAM_ADMIN_ID": "12345"}, clear=False):
+            result = is_admin(mock_update)
+            assert result is True
+
+    def test_is_admin_com_telegram_admin_id_hifen_env(self):
+        """Testa is_admin com telegram-admin-id presente"""
+        mock_user = Mock()
+        mock_user.id = 67890
+
+        mock_update = Mock()
+        mock_update.effective_user = mock_user
+
+        with patch.dict(os.environ, {"telegram-admin-id": "67890"}, clear=False):
+            result = is_admin(mock_update)
+            assert result is True
+
+    def test_is_admin_com_telegram_admin_id_underscore_env(self):
+        """Testa is_admin com telegram_admin_id presente"""
+        mock_user = Mock()
+        mock_user.id = 11111
+
+        mock_update = Mock()
+        mock_update.effective_user = mock_user
+
+        with patch.dict(os.environ, {"telegram_admin_id": "11111"}, clear=False):
+            result = is_admin(mock_update)
+            assert result is True
 
     @patch("app.bot.bot.requests.get")
     def test_listar_tickets_sucesso(self, mock_get):
