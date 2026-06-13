@@ -21,14 +21,35 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def get_admin_ids():
     raw = os.getenv("ADMIN_IDS", "")
-    fallback = (
-        os.getenv("TELEGRAM_ADMIN_ID", "")
-        or os.getenv("TELEGRAM_ADMIN_IDS", "")
-        or os.getenv("telegram-admin-id", "")
-        or os.getenv("telegram-admin-ids", "")
-        or os.getenv("telegram_admin_id", "")
-        or os.getenv("telegram_admin_ids", "")
-    )
+
+    fallback = ""
+    candidates = [
+        "TELEGRAM_ADMIN_ID",
+        "TELEGRAM_ADMIN_IDS",
+        "telegram-admin-id",
+        "telegram-admin-ids",
+        "telegram_admin_id",
+        "telegram_admin_ids",
+    ]
+
+    for key in candidates:
+        value = os.getenv(key)
+        if value:
+            fallback = value
+            break
+
+    if not fallback:
+        lower_map = {k.lower(): v for k, v in os.environ.items()}
+        for key in [
+            "telegram_admin_id",
+            "telegram_admin_ids",
+            "telegram-admin-id",
+            "telegram-admin-ids",
+        ]:
+            if key in lower_map:
+                fallback = lower_map[key]
+                break
+
     values = [raw, fallback]
     ids = []
     for value in values:
