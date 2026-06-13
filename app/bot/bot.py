@@ -677,6 +677,19 @@ def run_bot(token=None):
     async def encerrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await close(update, context)
 
+    async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = get_user_id(update)
+        admin_ids = get_admin_ids()
+        is_admin_flag = is_admin(update)
+        
+        msg = f"🔍 **Debug Info**\n\n"
+        msg += f"👤 Seu ID: `{user_id}`\n"
+        msg += f"🔑 IDs de admin configurados: `{', '.join(admin_ids) if admin_ids else 'nenhum'}`\n"
+        msg += f"✅ Você é admin? {is_admin_flag}\n\n"
+        msg += "Se você deveria ser admin, copie seu ID e configure a variável de ambiente `TELEGRAM_ADMIN_ID` no Jenkins.\n"
+        
+        await update.message.reply_text(msg)
+
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text or ""
         step = context.user_data.get("step", "tipo")
@@ -873,6 +886,7 @@ def run_bot(token=None):
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("debug", debug_command))
     app.add_handler(CommandHandler("tickets", tickets))
     app.add_handler(CommandHandler(["lista", "listar"], listar))
     app.add_handler(CommandHandler("entrar", entrar))
