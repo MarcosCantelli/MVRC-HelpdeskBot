@@ -72,9 +72,25 @@ class TestBotUtils:
         """Testa get_user_id quando não tem effective_user"""
         mock_update = Mock()
         mock_update.effective_user = None
+        mock_update.message = None
 
         result = get_user_id(mock_update)
         assert result == ""
+
+    def test_get_user_id_from_message_user(self):
+        """Testa get_user_id com message.from_user quando effective_user falta"""
+        mock_user = Mock()
+        mock_user.id = 98765
+
+        mock_message = Mock()
+        mock_message.from_user = mock_user
+
+        mock_update = Mock()
+        mock_update.effective_user = None
+        mock_update.message = mock_message
+
+        result = get_user_id(mock_update)
+        assert result == "98765"
 
     def test_is_admin_verdadeiro(self):
         """Testa is_admin quando usuário é admin"""

@@ -1,5 +1,5 @@
 from telegram import Update, ReplyKeyboardMarkup
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -10,7 +10,7 @@ from telegram.ext import (
 import requests
 import os
 
-load_dotenv()
+load_dotenv(find_dotenv())
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 API_URL = os.getenv(
@@ -22,7 +22,6 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 def get_admin_ids():
     raw = os.getenv("ADMIN_IDS", "")
 
-    fallback = ""
     candidates = [
         "TELEGRAM_ADMIN_ID",
         "TELEGRAM_ADMIN_IDS",
@@ -32,22 +31,19 @@ def get_admin_ids():
         "telegram_admin_ids",
     ]
 
+    fallback = ""
     for key in candidates:
-        value = os.getenv(key)
+        value = os.environ.get(key)
         if value:
             fallback = value
             break
 
     if not fallback:
         lower_map = {k.lower(): v for k, v in os.environ.items()}
-        for key in [
-            "telegram_admin_id",
-            "telegram_admin_ids",
-            "telegram-admin-id",
-            "telegram-admin-ids",
-        ]:
-            if key in lower_map:
-                fallback = lower_map[key]
+        for key in candidates:
+            lowered = key.lower()
+            if lowered in lower_map:
+                fallback = lower_map[lowered]
                 break
 
     values = [raw, fallback]
@@ -115,6 +111,12 @@ def get_user(update):
 def get_user_id(update):
     if hasattr(update, "effective_user") and update.effective_user:
         return str(getattr(update.effective_user, "id", ""))
+
+    if hasattr(update, "message") and update.message:
+        from_user = getattr(update.message, "from_user", None)
+        if from_user:
+            return str(getattr(from_user, "id", ""))
+
     return ""
 
 
@@ -495,9 +497,6 @@ async def adicionar_observacao_admin(update, context, observacao):
 # NOTIFICAÇÃO
 # =========================
 def notificar_telegram(user, ticket_code, summary=None, request_func=None):
-    if not TELEGRAM_CHAT_ID:
-        return None
-
     request_func = request_func or requests.post
 
     texto_resumo = summary or "Sem descrição adicional"
@@ -505,24 +504,37 @@ def notificar_telegram(user, ticket_code, summary=None, request_func=None):
     if len(texto_resumo) > 120:
         texto_resumo = texto_resumo[:117].rstrip() + "..."
 
+    targets = []
+    if TELEGRAM_CHAT_ID:
+        targets.append(TELEGRAM_CHAT_ID)
+
+    for admin_id in get_admin_ids():
+        if admin_id and admin_id not in targets:
+            targets.append(admin_id)
+
+    if not targets:
+        return None
+
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        text = (
+            f"🚨 Novo chamado aberto!\n"
+            f"🎟️ {ticket_code}\n"
+            f"👤 {user}\n"
+            f"📌 {texto_resumo}"
+        )
 
-        payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": (
-                f"🚨 Novo chamado aberto!\n"
-                f"🎟️ {ticket_code}\n"
-                f"👤 {user}\n"
-                f"📌 {texto_resumo}"
-            ),
-        }
+        for target in targets:
+            payload = {
+                "chat_id": target,
+                "text": text,
+            }
+            try:
+                request_func(url, json=payload, timeout=5)
+            except TypeError:
+                request_func(url, json=payload)
 
-        try:
-            return request_func(url, json=payload, timeout=5)
-        except TypeError:
-            return request_func(url, json=payload)
-
+        return True
     except Exception:
         return None
 
@@ -597,13 +609,18 @@ def run_bot(token=None):
             await mostrar_menu_admin(update, context)
             return
         else:
-            context.user_data.clear()
-            context.user_data["step"] = "descricao"
-
-            await update.message.reply_text(
+            user_id = get_user_id(update)
+            admin_ids = get_admin_ids()
+            msg = (
                 f"Bem-vindo {user_name}! Sou o assistente do Helpdesk.\n\n"
-                "Descreva o problema que está acontecendo e eu tento ajudar rapidamente."
+                "Descreva o problema que está acontecendo e eu tento ajudar rapidamente.\n"
             )
+            if admin_ids:
+                msg += (
+                    "\n⚠️ Você ainda não está configurado como admin. "
+                    "Use /debug para ver seu ID e os admins configurados.\n"
+                )
+            await update.message.reply_text(msg)
             await update.message.reply_text(
                 "Se preferir, você também pode abrir um chamado direto após a análise."
             )
