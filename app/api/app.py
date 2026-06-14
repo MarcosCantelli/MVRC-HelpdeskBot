@@ -18,15 +18,48 @@ app = Flask(__name__)
 def utcnow():
     return datetime.now(timezone.utc)
 
+def normalize_admin_values(value):
+    if not value:
+        return []
+
+    values = []
+    for candidate in value.replace("\n", ",").split(","):
+        candidate = candidate.strip().strip('"').strip("'")
+        if candidate:
+            values.append(candidate)
+    return values
+
+
 def get_admin_ids():
     raw = os.getenv("ADMIN_IDS", "")
-    fallback = os.getenv("TELEGRAM_ADMIN_ID", "") or os.getenv("TELEGRAM_ADMIN_IDS", "")
+
+    candidates = [
+        "TELEGRAM_ADMIN_ID",
+        "TELEGRAM_ADMIN_IDS",
+        "telegram-admin-id",
+        "telegram-admin-ids",
+        "telegram_admin_id",
+        "telegram_admin_ids",
+        "ADMIN_CHAT_ID",
+        "TELEGRAM_CHAT_ID",
+    ]
+
+    values = [raw]
+    for key in candidates:
+        value = os.getenv(key, "")
+        if value:
+            values.append(value)
+
+    lower_map = {k.lower(): v for k, v in os.environ.items()}
+    for key in candidates:
+        lowered = key.lower()
+        if lowered in lower_map:
+            values.append(lower_map[lowered])
+            break
+
     ids = []
-    for value in (raw, fallback):
-        for item in value.split(","):
-            candidate = item.strip()
-            if candidate:
-                ids.append(candidate)
+    for value in values:
+        ids.extend(normalize_admin_values(value))
     return list(dict.fromkeys(ids))
 
 

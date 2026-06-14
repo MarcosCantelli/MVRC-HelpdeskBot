@@ -174,6 +174,30 @@ class TestBotUtils:
             result = is_admin(mock_update)
             assert result is True
 
+    def test_is_admin_com_admin_chat_id_env(self):
+        """Testa is_admin com ADMIN_CHAT_ID presente"""
+        mock_user = Mock()
+        mock_user.id = 33333
+
+        mock_update = Mock()
+        mock_update.effective_user = mock_user
+
+        with patch.dict(os.environ, {"ADMIN_CHAT_ID": "33333"}, clear=False):
+            result = is_admin(mock_update)
+            assert result is True
+
+    def test_is_admin_com_telegram_chat_id_env(self):
+        """Testa is_admin com TELEGRAM_CHAT_ID presente"""
+        mock_user = Mock()
+        mock_user.id = 44444
+
+        mock_update = Mock()
+        mock_update.effective_user = mock_user
+
+        with patch.dict(os.environ, {"TELEGRAM_CHAT_ID": "44444"}, clear=False):
+            result = is_admin(mock_update)
+            assert result is True
+
     @patch("app.bot.bot.requests.get")
     def test_listar_tickets_sucesso(self, mock_get):
         """Testa listar_tickets com sucesso"""

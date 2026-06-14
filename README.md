@@ -47,7 +47,7 @@ A helpdesk solution with a Telegram bot and REST API for ticket management. The 
 ### Bot
 
 - `TELEGRAM_TOKEN` — Telegram bot token.
-- `TELEGRAM_CHAT_ID` — chat ID for notifications.
+- `TELEGRAM_CHAT_ID` — chat ID for notifications and optional admin ID.
 - `API_URL` — API URL (default: `http://helpdesk-api:5000`).
 - `ADMIN_IDS` — comma-separated list of valid admin IDs.
 
