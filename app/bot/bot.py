@@ -624,6 +624,7 @@ def run_bot(token=None):
             await update.message.reply_text(
                 "Se preferir, você também pode abrir um chamado direto após a análise."
             )
+            context.user_data["step"] = "descricao"
 
     async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_admin(update):
