@@ -22,6 +22,7 @@ class Ticket(Base):
     ai_suggestion = Column(String)
 
     status = Column(String, default="aberto", nullable=False)
+    chat_id = Column(String, nullable=True)
 
     # 🔥 NOVO
     created_at = Column(DateTime(timezone=True), default=utcnow)

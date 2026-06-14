@@ -82,7 +82,8 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             subcategory=data.get("subcategory"),
             description=data["description"],
             ai_suggestion=data.get("ai_suggestion"),
-            status="aberto"
+            status="aberto",
+            chat_id=data.get("chat_id")
         )
 
         db.add(ticket)
@@ -129,6 +130,7 @@ def get_ticket_by_code(ticket_code):
             "status": ticket.status,
             "created_at": ticket.created_at,
             "closed_at": ticket.closed_at,
+            "chat_id": ticket.chat_id,
             "admin_notes": ticket.admin_notes
         }, 200
 
@@ -159,7 +161,8 @@ def list_tickets():
                 "user": t.user,
                 "status": t.status,
                 "created_at": t.created_at,
-                "closed_at": t.closed_at
+                "closed_at": t.closed_at,
+                "chat_id": t.chat_id,
             } for t in tickets
         ]), 200
 
