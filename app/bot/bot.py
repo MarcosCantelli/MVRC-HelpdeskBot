@@ -120,6 +120,18 @@ def get_user_id(update):
     return ""
 
 
+def get_chat_id(update):
+    if hasattr(update, "effective_chat") and update.effective_chat:
+        return str(getattr(update.effective_chat, "id", ""))
+
+    if hasattr(update, "message") and update.message:
+        chat = getattr(update.message, "chat", None)
+        if chat:
+            return str(getattr(chat, "id", ""))
+
+    return get_user_id(update)
+
+
 def is_admin(update):
     user_id = get_user_id(update)
     if not user_id:
@@ -275,7 +287,7 @@ def criar_payload(user, context):
     """
     context = context or {}
 
-    return {
+    payload = {
         "user": user,
         "description": context.get("descricao") or context.get("description"),
         "category": (
@@ -290,6 +302,11 @@ def criar_payload(user, context):
         ),
         "ai_suggestion": context.get("sugestao") or context.get("ai", ""),
     }
+
+    if context.get("chat_id"):
+        payload["chat_id"] = context["chat_id"]
+
+    return payload
 
 
 # =========================
@@ -353,6 +370,18 @@ def buscar_ticket_por_codigo(ticket_code, request_func=None):
         return None
 
 
+def buscar_ticket_por_id(ticket_id, request_func=None):
+    request_func = request_func or requests.get
+    try:
+        tickets = listar_tickets(request_func=request_func)
+        for ticket in tickets:
+            if str(ticket.get("id")) == str(ticket_id):
+                return ticket
+        return None
+    except Exception:
+        return None
+
+
 def fechar_ticket(ticket_id, admin, request_func=None):
     request_func = request_func or requests.post
 
@@ -374,30 +403,44 @@ def fechar_ticket(ticket_id, admin, request_func=None):
 # =========================
 # ADMIN FUNCTIONS
 # =========================
-async def listar_chamados_admin(update, context):
+async def mostrar_filtros_listagem(update, context):
+    keyboard = [
+        ["Abertos"],
+        ["Em andamento"],
+        ["Encerrados"],
+        ["Todos"],
+        ["↩️ Voltar"],
+    ]
+    await update.message.reply_text(
+        "Selecione o filtro de chamados:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+    )
+    context.user_data["step"] = "listar_filtro"
+
+
+async def listar_chamados_status_admin(update, context, status=None):
     try:
-        response = requests.get(f"{API_URL}/tickets")
-        if response.status_code == 200:
-            tickets = response.json()
-            if not tickets:
-                await update.message.reply_text("Nenhum ticket encontrado.")
-                return
+        tickets = listar_tickets()
+        if status and status != "todos":
+            tickets = [t for t in tickets if t.get("status") == status]
 
-            msg = "📋 Chamados:\n\n"
-            keyboard = []
+        if not tickets:
+            await update.message.reply_text("Nenhum ticket encontrado para esse filtro.")
+            return
 
-            for t in tickets:
-                msg += f"🎫 {t['code']} | {t['user']} | {t['status']}\n"
-                keyboard.append([f"📄 Ver {t['code']}"])
+        msg = f"📋 Chamados ({status or 'todos'}):\n\n"
+        keyboard = []
 
-            keyboard.append(["↩️ Voltar"])
-            await update.message.reply_text(
-                msg,
-                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-            )
-            context.user_data["step"] = "listar_detalhes"
-        else:
-            await update.message.reply_text("Erro ao listar tickets.")
+        for t in tickets:
+            msg += f"🎫 {t['code']} | {t['user']} | {t['status']}\n"
+            keyboard.append([f"📄 Ver {t['code']}"])
+
+        keyboard.append(["↩️ Voltar"])
+        await update.message.reply_text(
+            msg,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+        )
+        context.user_data["step"] = "listar_detalhes"
     except Exception:
         await update.message.reply_text("Erro ao listar tickets.")
 
@@ -411,7 +454,7 @@ async def consultar_ticket_admin(update, context, ticket_code):
             context.user_data["ticket_atual"] = ticket
             context.user_data["step"] = "gerenciar_ticket"
 
-            status_options = ["🔓 Aberto", "⏳ Em atendimento", "✅ Encerrado"]
+            status_options = ["🔓 Aberto", "⏳ Em atendimento", "✅ Encerrado", "🔄 Reabrir chamado"]
             keyboard = [[opt] for opt in status_options]
             keyboard.append(["📝 Adicionar observação"])
             keyboard.append(["↩️ Voltar"])
@@ -440,13 +483,13 @@ async def gerenciar_ticket_admin(update, context, text):
         await update.message.reply_text("Erro: ticket não encontrado.")
         return
 
-    if "aberto" in text.lower():
+    if "reabrir" in text.lower() or ("aberto" in text.lower() and "encerrado" not in text.lower()):
         await alterar_status_ticket(update, context, ticket["id"], "aberto")
     elif "em atendimento" in text.lower():
         await alterar_status_ticket(update, context, ticket["id"], "em atendimento")
-    elif "encerrado" in text.lower():
+    elif "encerrado" in text.lower() or "fechar" in text.lower() or "encerrar" in text.lower():
         await alterar_status_ticket(update, context, ticket["id"], "encerrado")
-    elif "adicionar observação" in text.lower():
+    elif "adicionar observação" in text.lower() or "observação" in text.lower() or "observacao" in text.lower():
         context.user_data["step"] = "adicionar_observacao"
         await update.message.reply_text("Digite a observação:")
     elif "voltar" in text.lower():
@@ -463,6 +506,11 @@ async def alterar_status_ticket(update, context, ticket_id, status):
             json={"status": status, "admin": get_user_id(update)}
         )
         if response.status_code == 200:
+            ticket = context.user_data.get("ticket_atual")
+            if ticket:
+                ticket["status"] = status
+            if status == "encerrado" and ticket:
+                notificar_cliente_fechamento(ticket)
             await update.message.reply_text(f"Status alterado para: {status}")
             # Recarregar ticket
             await consultar_ticket_admin(update, context, context.user_data["ticket_atual"]["code"])
@@ -539,12 +587,46 @@ def notificar_telegram(user, ticket_code, summary=None, request_func=None):
         return None
 
 
+def notificar_cliente_fechamento(ticket, request_func=None):
+    request_func = request_func or requests.post
+    chat_id = ticket.get("chat_id")
+    if not chat_id:
+        return None
+
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        text = (
+            f"✅ Seu chamado {ticket.get('code', '')} foi encerrado.\n"
+            f"👤 Usuário: {ticket.get('user', '')}\n"
+            f"📌 Status: {ticket.get('status', '')}\n"
+        )
+        if ticket.get("admin_notes"):
+            notes = ticket["admin_notes"].strip()
+            if notes:
+                text += f"\n📝 Observações do atendimento:\n{notes}"
+
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+        }
+        try:
+            request_func(url, json=payload, timeout=5)
+        except TypeError:
+            request_func(url, json=payload)
+        return True
+    except Exception:
+        return None
+
+
 # =========================
 # CRIAR TICKET
 # =========================
 
 async def criar_ticket(update, user, context):
     try:
+        if "chat_id" not in context:
+            context["chat_id"] = get_chat_id(update)
+
         payload = criar_payload(user, context)
 
         data = enviar_ticket(payload)
@@ -658,11 +740,24 @@ def run_bot(token=None):
             await update.message.reply_text("❌ Acesso negado.")
             return
 
-        await tickets(update, context)
+        await mostrar_filtros_listagem(update, context)
 
     async def entrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
             await update.message.reply_text("❌ Acesso negado.")
+            return
+
+        if context.args:
+            ticket_ref = context.args[0].strip()
+            ticket_code = ticket_ref.upper()
+            if ticket_ref.isdigit():
+                ticket_data = buscar_ticket_por_id(ticket_ref)
+                if ticket_data and ticket_data.get("code"):
+                    ticket_code = ticket_data["code"]
+                else:
+                    await update.message.reply_text("Ticket não encontrado.")
+                    return
+            await consultar_ticket_admin(update, context, ticket_code)
             return
 
         context.user_data["step"] = "consultar_ticket"
@@ -679,8 +774,16 @@ def run_bot(token=None):
 
         ticket_ref = context.args[0].strip()
         ticket_id = ticket_ref
+        ticket_data = None
 
-        if not ticket_ref.isdigit():
+        if ticket_ref.isdigit():
+            ticket_data = buscar_ticket_por_id(ticket_ref)
+            if ticket_data and ticket_data.get("id"):
+                ticket_id = str(ticket_data["id"])
+            else:
+                await update.message.reply_text("Ticket não encontrado.")
+                return
+        else:
             ticket_data = buscar_ticket_por_codigo(ticket_ref)
             if ticket_data and ticket_data.get("id"):
                 ticket_id = str(ticket_data["id"])
@@ -689,6 +792,8 @@ def run_bot(token=None):
                 return
 
         fechar_ticket(ticket_id, get_user_id(update))
+        if ticket_data:
+            notificar_cliente_fechamento(ticket_data)
 
         await update.message.reply_text(f"Ticket {ticket_ref} encerrado.")
 
@@ -718,7 +823,7 @@ def run_bot(token=None):
             text_lower = text.lower()
 
             if text_lower in ("1", "1 - listar chamados", "listar chamados", "listar"):
-                await listar_chamados_admin(update, context)
+                await mostrar_filtros_listagem(update, context)
                 return
 
             if text_lower in ("2", "2 - abrir chamado", "abrir chamado", "abrir"):
@@ -757,6 +862,30 @@ def run_bot(token=None):
                 await consultar_ticket_admin(update, context, ticket_code)
             elif "voltar" in text.lower():
                 await mostrar_menu_admin(update, context, "O que você gostaria de fazer?\n\n" + help_admin_text())
+            return
+
+        if step == "listar_filtro":
+            status = None
+            text_lower = text.lower()
+            if "aberto" in text_lower:
+                status = "aberto"
+            elif "em andamento" in text_lower or "andamento" in text_lower:
+                status = "em atendimento"
+            elif "encerr" in text_lower:
+                status = "encerrado"
+            elif "todos" in text_lower:
+                status = "todos"
+            elif "voltar" in text_lower:
+                await mostrar_menu_admin(update, context, "O que você gostaria de fazer?\n\n" + help_admin_text())
+                return
+
+            if status is None:
+                await update.message.reply_text(
+                    "Escolha um filtro válido: Abertos, Em andamento, Encerrados ou Todos."
+                )
+                return
+
+            await listar_chamados_status_admin(update, context, status)
             return
 
         if step == "gerenciar_ticket":
