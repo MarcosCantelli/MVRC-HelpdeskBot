@@ -19,6 +19,18 @@ API_URL = os.getenv(
 ).rstrip("/")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+def normalize_admin_values(value):
+    if not value:
+        return []
+
+    values = []
+    for candidate in value.replace("\n", ",").split(","):
+        candidate = candidate.strip().strip('"').strip("'")
+        if candidate:
+            values.append(candidate)
+    return values
+
+
 def get_admin_ids():
     raw = os.getenv("ADMIN_IDS", "")
 
@@ -29,30 +41,28 @@ def get_admin_ids():
         "telegram-admin-ids",
         "telegram_admin_id",
         "telegram_admin_ids",
+        "ADMIN_CHAT_ID",
+        "TELEGRAM_CHAT_ID",
     ]
 
-    fallback = ""
+    values = [raw]
     for key in candidates:
         value = os.environ.get(key)
         if value:
-            fallback = value
-            break
+            values.append(value)
 
-    if not fallback:
+    if len(values) == 1 or not any(values[1:]):
         lower_map = {k.lower(): v for k, v in os.environ.items()}
         for key in candidates:
             lowered = key.lower()
             if lowered in lower_map:
-                fallback = lower_map[lowered]
+                values.append(lower_map[lowered])
                 break
 
-    values = [raw, fallback]
     ids = []
     for value in values:
-        for item in value.split(","):
-            candidate = item.strip()
-            if candidate:
-                ids.append(candidate)
+        ids.extend(normalize_admin_values(value))
+
     return list(dict.fromkeys(ids))
 
 
@@ -737,14 +747,20 @@ def run_bot(token=None):
 
     async def listar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
-            await update.message.reply_text("❌ Acesso negado.")
+            await update.message.reply_text(
+                "❌ Acesso negado. Você não está configurado como admin. "
+                "Use /debug para ver seu ID e os admins configurados."
+            )
             return
 
         await mostrar_filtros_listagem(update, context)
 
     async def entrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update):
-            await update.message.reply_text("❌ Acesso negado.")
+            await update.message.reply_text(
+                "❌ Acesso negado. Você não está configurado como admin. "
+                "Use /debug para ver seu ID e os admins configurados."
+            )
             return
 
         if context.args:
@@ -808,8 +824,13 @@ def run_bot(token=None):
         msg = f"🔍 **Debug Info**\n\n"
         msg += f"👤 Seu ID: `{user_id}`\n"
         msg += f"🔑 IDs de admin configurados: `{', '.join(admin_ids) if admin_ids else 'nenhum'}`\n"
+        msg += f"📌 TELEGRAM_CHAT_ID: `{os.getenv('TELEGRAM_CHAT_ID', '') or 'não configurado'}`\n"
+        msg += f"📌 ADMIN_CHAT_ID: `{os.getenv('ADMIN_CHAT_ID', '') or 'não configurado'}`\n"
         msg += f"✅ Você é admin? {is_admin_flag}\n\n"
-        msg += "Se você deveria ser admin, copie seu ID e configure a variável de ambiente `TELEGRAM_ADMIN_ID` no Jenkins.\n"
+        msg += (
+            "Se você deveria ser admin, copie seu ID e configure uma das variáveis de ambiente:\n"
+            "`ADMIN_IDS`, `TELEGRAM_ADMIN_ID`, `telegram-admin-id`, `ADMIN_CHAT_ID` ou `TELEGRAM_CHAT_ID`.\n"
+        )
         
         await update.message.reply_text(msg)
 
