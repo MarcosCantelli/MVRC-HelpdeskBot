@@ -19,11 +19,8 @@ services:
       - api
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - TELEGRAM_CHAT_ID=${ADMIN_CHAT_ID}
-
-      # CORRETO
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - API_URL=http://helpdesk-api:5000
-
     restart: always
     networks:
       - helpdesk-net
