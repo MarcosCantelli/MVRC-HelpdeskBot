@@ -1,4 +1,4 @@
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from dotenv import load_dotenv, find_dotenv
 from telegram.ext import (
     ApplicationBuilder,
@@ -78,11 +78,11 @@ FAQ = {
 def help_admin_text():
     return (
         "🛠️ Menu do administrador\n\n"
-        "1 - Listar chamados\n"
+        "1 - Listar chamados (todos)\n"
         "2 - Abrir chamado\n"
         "3 - Consultar / gerenciar chamado\n"
         "4 - /help\n\n"
-        "Aliases úteis: /listar, /entrar, /encerrar.\n"
+        "Aliases úteis: /all, /entrar, /encerrar.\n"
         "Use os números ou as palavras exibidas para navegar."
     )
 
@@ -291,10 +291,6 @@ def sugerir_solucao(texto):
 # PAYLOAD
 # =========================
 def criar_payload(user, context):
-    """
-    Cria payload para envio de ticket.
-    Mantém compatibilidade com categoria e subcategoria quando existirem.
-    """
     context = context or {}
 
     payload = {
@@ -345,8 +341,8 @@ def enviar_ticket(payload, request_func=None):
 
     except Exception:
         return None
-    
-    
+
+
 # =========================
 # API - ADMIN
 # =========================
@@ -401,17 +397,26 @@ def fechar_ticket(ticket_id, admin, request_func=None):
             json={"admin": admin}
         )
 
+        status_code = getattr(response, "status_code", None)
+        body = None
         if response and hasattr(response, "json"):
-            return response.json()
+            try:
+                body = response.json()
+            except Exception:
+                body = None
 
-        return None
+        return {
+            "ok": status_code == 200,
+            "status_code": status_code,
+            "body": body,
+        }
 
     except Exception:
-        return None
+        return {"ok": False, "status_code": None, "body": None}
 
 
 # =========================
-# ADMIN FUNCTIONS
+# ADMIN FUNCTIONS (visão completa - todos os chamados)
 # =========================
 async def mostrar_filtros_listagem(update, context):
     keyboard = [
@@ -510,7 +515,6 @@ async def gerenciar_ticket_admin(update, context, text):
 
 async def alterar_status_ticket(update, context, ticket_id, status):
     try:
-        # Assumindo que há um endpoint para alterar status
         response = requests.patch(
             f"{API_URL}/ticket/{ticket_id}/status",
             json={"status": status, "admin": get_user_id(update)}
@@ -522,12 +526,18 @@ async def alterar_status_ticket(update, context, ticket_id, status):
             if status == "encerrado" and ticket:
                 notificar_cliente_fechamento(ticket)
             await update.message.reply_text(f"Status alterado para: {status}")
-            # Recarregar ticket
             await consultar_ticket_admin(update, context, context.user_data["ticket_atual"]["code"])
         else:
-            await update.message.reply_text("Erro ao alterar status.")
-    except Exception:
-        await update.message.reply_text("Erro ao alterar status.")
+            erro_detalhe = ""
+            try:
+                erro_detalhe = response.json().get("error", "")
+            except Exception:
+                pass
+            await update.message.reply_text(
+                f"❌ Erro ao alterar status (HTTP {response.status_code}). {erro_detalhe}"
+            )
+    except Exception as e:
+        await update.message.reply_text(f"Erro ao alterar status: {e}")
 
 
 async def adicionar_observacao_admin(update, context, observacao):
@@ -537,14 +547,114 @@ async def adicionar_observacao_admin(update, context, observacao):
         return
 
     try:
-        # Assumindo endpoint para adicionar observação
         response = requests.post(
             f"{API_URL}/ticket/{ticket['id']}/note",
-            json={"note": observacao, "admin": get_user_id(update)}
+            json={"note": observacao, "admin": get_user_id(update), "author_label": "Suporte"}
         )
         if response.status_code == 200:
             await update.message.reply_text("Observação adicionada.")
             await consultar_ticket_admin(update, context, ticket["code"])
+        else:
+            erro_detalhe = ""
+            try:
+                erro_detalhe = response.json().get("error", "")
+            except Exception:
+                pass
+            await update.message.reply_text(
+                f"❌ Erro ao adicionar observação (HTTP {response.status_code}). {erro_detalhe}"
+            )
+    except Exception as e:
+        await update.message.reply_text(f"Erro ao adicionar observação: {e}")
+
+
+# =========================
+# USUÁRIO COMUM - meus chamados
+# =========================
+async def listar_meus_chamados(update, context):
+    try:
+        chat_id = get_chat_id(update)
+        tickets = listar_tickets()
+        meus = [t for t in tickets if str(t.get("chat_id")) == str(chat_id)]
+
+        if not meus:
+            await update.message.reply_text(
+                "Você ainda não possui chamados.\n"
+                "Use /start para descrever um problema e abrir um chamado."
+            )
+            context.user_data["step"] = None
+            return
+
+        msg = "📋 Seus chamados:\n\n"
+        keyboard = []
+
+        for t in meus:
+            msg += f"🎫 {t['code']} | {t['status']}\n"
+            keyboard.append([f"📄 Ver {t['code']}"])
+
+        keyboard.append(["↩️ Voltar"])
+
+        await update.message.reply_text(
+            msg,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+        )
+        context.user_data["step"] = "meu_listar_detalhes"
+    except Exception:
+        await update.message.reply_text("Erro ao listar seus chamados.")
+
+
+async def consultar_ticket_usuario(update, context, ticket_code):
+    try:
+        response = requests.get(f"{API_URL}/ticket/{ticket_code}")
+        if response.status_code != 200:
+            await update.message.reply_text("Ticket não encontrado.")
+            return
+
+        ticket = response.json()
+        chat_id = get_chat_id(update)
+
+        if str(ticket.get("chat_id")) != str(chat_id):
+            await update.message.reply_text("Esse chamado não pertence a você.")
+            return
+
+        context.user_data["meu_ticket_atual"] = ticket
+        context.user_data["step"] = "meu_ticket_detalhe"
+
+        msg = (
+            f"🎫 Ticket: {ticket['code']}\n"
+            f"📋 Status: {ticket['status']}\n"
+            f"📅 Criado: {ticket.get('created_at', 'N/A')}\n\n"
+            f"Descrição: {ticket.get('description', 'N/A')}"
+        )
+        if ticket.get("admin_notes"):
+            msg += f"\n\n📝 Observações:\n{ticket['admin_notes']}"
+
+        keyboard = [["📝 Adicionar observação"], ["↩️ Voltar"]]
+        await update.message.reply_text(
+            msg,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+        )
+    except Exception:
+        await update.message.reply_text("Erro ao consultar ticket.")
+
+
+async def adicionar_observacao_usuario(update, context, observacao):
+    ticket = context.user_data.get("meu_ticket_atual")
+    if not ticket:
+        await update.message.reply_text("Erro: ticket não encontrado.")
+        return
+
+    try:
+        response = requests.post(
+            f"{API_URL}/ticket/{ticket['id']}/note",
+            json={
+                "chat_id": get_chat_id(update),
+                "note": observacao,
+                "author_label": get_user(update),
+            }
+        )
+        if response.status_code == 200:
+            await update.message.reply_text("Observação adicionada.")
+            await consultar_ticket_usuario(update, context, ticket["code"])
         else:
             await update.message.reply_text("Erro ao adicionar observação.")
     except Exception:
@@ -570,7 +680,14 @@ def notificar_telegram(user, ticket_code, summary=None, request_func=None):
         if admin_id and admin_id not in targets:
             targets.append(admin_id)
 
+    print(f"[BOT] notificar_telegram chamada | targets={targets} | TOKEN configurado={bool(TOKEN)}")
+
     if not targets:
+        print("[BOT] notificar_telegram: nenhum target encontrado, notificação não enviada.")
+        return None
+
+    if not TOKEN:
+        print("[BOT] notificar_telegram: TELEGRAM_TOKEN não configurado, notificação não enviada.")
         return None
 
     try:
@@ -588,12 +705,24 @@ def notificar_telegram(user, ticket_code, summary=None, request_func=None):
                 "text": text,
             }
             try:
-                request_func(url, json=payload, timeout=5)
+                resp = request_func(url, json=payload, timeout=5)
             except TypeError:
-                request_func(url, json=payload)
+                resp = request_func(url, json=payload)
+
+            status_code = getattr(resp, "status_code", "desconhecido")
+            print(f"[BOT] notificar_telegram: enviado para {target} | status={status_code}")
+
+            if hasattr(resp, "json"):
+                try:
+                    resp_body = resp.json()
+                    if not resp_body.get("ok", True):
+                        print(f"[BOT] notificar_telegram: Telegram retornou erro para {target}: {resp_body}")
+                except Exception:
+                    pass
 
         return True
-    except Exception:
+    except Exception as e:
+        print(f"[BOT] notificar_telegram: EXCEPTION: {e}")
         return None
 
 
@@ -601,6 +730,7 @@ def notificar_cliente_fechamento(ticket, request_func=None):
     request_func = request_func or requests.post
     chat_id = ticket.get("chat_id")
     if not chat_id:
+        print(f"[BOT] notificar_cliente_fechamento: ticket sem chat_id, notificação não enviada. ticket={ticket.get('code')}")
         return None
 
     try:
@@ -620,11 +750,16 @@ def notificar_cliente_fechamento(ticket, request_func=None):
             "text": text,
         }
         try:
-            request_func(url, json=payload, timeout=5)
+            resp = request_func(url, json=payload, timeout=5)
         except TypeError:
-            request_func(url, json=payload)
+            resp = request_func(url, json=payload)
+
+        status_code = getattr(resp, "status_code", "desconhecido")
+        print(f"[BOT] notificar_cliente_fechamento: enviado para {chat_id} | status={status_code}")
+
         return True
-    except Exception:
+    except Exception as e:
+        print(f"[BOT] notificar_cliente_fechamento: EXCEPTION: {e}")
         return None
 
 
@@ -694,27 +829,24 @@ def run_bot(token=None):
         if is_admin(update):
             await update.message.reply_text(
                 f"Olá {user_name}, o que você gostaria de fazer?\n\n"
-                "- /listar para listar os chamados\n"
+                "- /listar para ver seus próprios chamados\n"
+                "- /all para listar todos os chamados\n"
                 "- /entrar para atender algum chamado\n"
-                "- /help para ver o menu de administração\n"
+                "- /encerrar para encerrar um chamado\n"
+                "- /help para ver o menu de administração\n",
+                reply_markup=ReplyKeyboardRemove(),
             )
             await mostrar_menu_admin(update, context)
             return
         else:
-            user_id = get_user_id(update)
-            admin_ids = get_admin_ids()
             msg = (
                 f"Bem-vindo {user_name}! Sou o assistente do Helpdesk.\n\n"
                 "Descreva o problema que está acontecendo e eu tento ajudar rapidamente.\n"
+                "Ou use /listar para ver seus chamados já abertos."
             )
-            if admin_ids:
-                msg += (
-                    "\n⚠️ Você ainda não está configurado como admin. "
-                    "Use /debug para ver seu ID e os admins configurados.\n"
-                )
-            await update.message.reply_text(msg)
             await update.message.reply_text(
-                "Se preferir, você também pode abrir um chamado direto após a análise."
+                msg,
+                reply_markup=ReplyKeyboardRemove(),
             )
             context.user_data["step"] = "descricao"
 
@@ -725,27 +857,23 @@ def run_bot(token=None):
         await update.message.reply_text(
             "💡 Comandos disponíveis:\n"
             "/start - reiniciar o atendimento\n"
+            "/listar - ver seus chamados\n"
             "/help - mostrar ajuda"
         )
 
-    async def tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not is_admin(update):
-            await update.message.reply_text("❌ Acesso negado.")
-            return
-
-        data = listar_tickets()
-
-        if not data:
-            await update.message.reply_text("Nenhum ticket encontrado.")
-            return
-
-        msg = "\n".join(
-            [f"{t['id']} | {t['code']} | {t['status']}" for t in data]
-        )
-
-        await update.message.reply_text(msg)
-
     async def listar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        /listar é para todo mundo: cada pessoa vê só os seus
+        próprios chamados, filtrados pelo chat_id de quem está
+        falando com o bot.
+        """
+        await listar_meus_chamados(update, context)
+
+    async def all_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        /all é restrito ao admin: mostra todos os chamados, com
+        filtros por status.
+        """
         if not is_admin(update):
             await update.message.reply_text(
                 "❌ Acesso negado. Você não está configurado como admin. "
@@ -779,13 +907,17 @@ def run_bot(token=None):
         context.user_data["step"] = "consultar_ticket"
         await update.message.reply_text("Digite o código do chamado (ex: TK2026001):")
 
-    async def close(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def encerrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Comando único e padronizado em português para encerrar chamados.
+        Substitui os antigos /close e /fechar.
+        """
         if not is_admin(update):
             await update.message.reply_text("❌ Acesso negado.")
             return
 
         if not context.args:
-            await update.message.reply_text("Use: /close <id|codigo>")
+            await update.message.reply_text("Use: /encerrar <id|codigo>")
             return
 
         ticket_ref = context.args[0].strip()
@@ -807,20 +939,28 @@ def run_bot(token=None):
                 await update.message.reply_text("Ticket não encontrado.")
                 return
 
-        fechar_ticket(ticket_id, get_user_id(update))
+        resultado = fechar_ticket(ticket_id, get_user_id(update))
+
+        if not resultado.get("ok"):
+            erro_detalhe = ""
+            if resultado.get("body") and isinstance(resultado["body"], dict):
+                erro_detalhe = resultado["body"].get("error", "")
+            await update.message.reply_text(
+                f"❌ Erro ao encerrar ticket (HTTP {resultado.get('status_code')}). {erro_detalhe}\n"
+                "Verifique se seu ID está autorizado na API (variável ADMIN_IDS/TELEGRAM_CHAT_ID)."
+            )
+            return
+
         if ticket_data:
             notificar_cliente_fechamento(ticket_data)
 
-        await update.message.reply_text(f"Ticket {ticket_ref} encerrado.")
-
-    async def encerrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await close(update, context)
+        await update.message.reply_text(f"✅ Ticket {ticket_ref} encerrado.")
 
     async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = get_user_id(update)
         admin_ids = get_admin_ids()
         is_admin_flag = is_admin(update)
-        
+
         msg = f"🔍 **Debug Info**\n\n"
         msg += f"👤 Seu ID: `{user_id}`\n"
         msg += f"🔑 IDs de admin configurados: `{', '.join(admin_ids) if admin_ids else 'nenhum'}`\n"
@@ -831,7 +971,7 @@ def run_bot(token=None):
             "Se você deveria ser admin, copie seu ID e configure uma das variáveis de ambiente:\n"
             "`ADMIN_IDS`, `TELEGRAM_ADMIN_ID`, `telegram-admin-id`, `ADMIN_CHAT_ID` ou `TELEGRAM_CHAT_ID`.\n"
         )
-        
+
         await update.message.reply_text(msg)
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -840,6 +980,9 @@ def run_bot(token=None):
 
         user = get_user(update)
 
+        # =========================
+        # FLUXO ADMIN
+        # =========================
         if step == "admin_menu":
             text_lower = text.lower()
 
@@ -917,8 +1060,42 @@ def run_bot(token=None):
             await adicionar_observacao_admin(update, context, text)
             return
 
+        # =========================
+        # FLUXO USUÁRIO - meus chamados
+        # =========================
+        if step == "meu_listar_detalhes":
+            if text.startswith("📄 Ver "):
+                ticket_code = text.replace("📄 Ver ", "").strip()
+                await consultar_ticket_usuario(update, context, ticket_code)
+            elif "voltar" in text.lower():
+                await update.message.reply_text(
+                    "Ok! Digite /start para voltar ao início.",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                context.user_data["step"] = None
+            return
+
+        if step == "meu_ticket_detalhe":
+            text_lower = text.lower()
+            if "adicionar observação" in text_lower or "observação" in text_lower or "observacao" in text_lower:
+                context.user_data["step"] = "usuario_adicionar_observacao"
+                await update.message.reply_text("Digite sua observação:")
+                return
+            if "voltar" in text_lower:
+                await listar_meus_chamados(update, context)
+                return
+            await update.message.reply_text("Opção inválida.")
+            return
+
+        if step == "usuario_adicionar_observacao":
+            await adicionar_observacao_usuario(update, context, text)
+            return
+
+        # =========================
+        # FLUXO ABERTURA DE CHAMADO (todos)
+        # =========================
+
         # Compatibilidade com testes antigos: passo 'tipo' existe mas redireciona direto para 'descricao'
-        # sem mostrar perguntas para o usuário.
         if step == "tipo":
             context.user_data["step"] = "descricao"
 
@@ -937,12 +1114,10 @@ def run_bot(token=None):
             context.user_data["descricao"] = text
             context.user_data["sugestao"] = sugerir_solucao(text)
 
-            # Mostra a sugestão
             await update.message.reply_text(
                 context.user_data["sugestao"]
             )
 
-            # Pergunta se o usuário quer tentar a solução ou abrir chamado
             keyboard = [
                 ["✅ Vou tentar essa solução"],
                 ["❌ Abrir chamado agora"]
@@ -958,7 +1133,6 @@ def run_bot(token=None):
             text_lower = text.lower()
 
             if "abrir chamado" in text_lower:
-                # Abre chamado diretamente
                 await criar_ticket(
                     update,
                     user,
@@ -982,7 +1156,6 @@ def run_bot(token=None):
                 return
 
             if "vou tentar" in text_lower:
-                # Usuário vai tentar a solução
                 keyboard = [
                     ["✅ Problema resolvido!"],
                     ["❌ Ainda não funcionou"],
@@ -995,7 +1168,6 @@ def run_bot(token=None):
                 context.user_data["step"] = "tentando_solucao"
                 return
 
-            # Se não entendeu, repete a pergunta
             keyboard = [
                 ["✅ Vou tentar essa solução"],
                 ["❌ Abrir chamado agora"]
@@ -1008,31 +1180,29 @@ def run_bot(token=None):
 
         if step == "tentando_solucao":
             if "problema resolvido" in text.lower() or "resolvido" in text.lower():
-                keyboard = [["🏠 Voltar ao início"]]
                 await update.message.reply_text(
-                    "✅ Ótimo! Fico feliz que conseguimos resolver!",
-                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    "✅ Ótimo! Fico feliz que conseguimos resolver!\n\n"
+                    "Digite /start quando precisar de algo novamente.",
+                    reply_markup=ReplyKeyboardRemove(),
                 )
                 context.user_data["step"] = "finalizado"
                 return
 
             if "ainda não funcionou" in text.lower() or "não funcionou" in text.lower():
-                # Abre chamado se o usuário não conseguiu resolver
                 await criar_ticket(
                     update,
                     user,
                     context.user_data
                 )
-                keyboard = [["🏠 Voltar ao início"]]
                 await update.message.reply_text(
-                    "Entendido! Abrimos um chamado para nossa equipe analisar.",
-                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                    "Entendido! Abrimos um chamado para nossa equipe analisar.\n\n"
+                    "Digite /start quando precisar de algo novamente.",
+                    reply_markup=ReplyKeyboardRemove(),
                 )
                 context.user_data["step"] = "finalizado"
                 return
 
             if "nova descrição" in text.lower():
-                # Usuário quer descrever outro problema
                 context.user_data.clear()
                 context.user_data["step"] = "descricao"
                 await update.message.reply_text(
@@ -1040,7 +1210,6 @@ def run_bot(token=None):
                 )
                 return
 
-            # Opções inválidas
             keyboard = [
                 ["✅ Problema resolvido!"],
                 ["❌ Ainda não funcionou"],
@@ -1055,12 +1224,10 @@ def run_bot(token=None):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("debug", debug_command))
-    app.add_handler(CommandHandler("tickets", tickets))
     app.add_handler(CommandHandler(["lista", "listar"], listar))
+    app.add_handler(CommandHandler("all", all_tickets))
     app.add_handler(CommandHandler("entrar", entrar))
-    app.add_handler(CommandHandler("close", close))
     app.add_handler(CommandHandler("encerrar", encerrar))
-    app.add_handler(CommandHandler("fechar", close))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
     return app

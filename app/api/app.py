@@ -18,6 +18,7 @@ app = Flask(__name__)
 def utcnow():
     return datetime.now(timezone.utc)
 
+
 def normalize_admin_values(value):
     if not value:
         return []
@@ -31,18 +32,27 @@ def normalize_admin_values(value):
 
 
 def get_admin_ids():
-    raw = os.getenv("ADMIN_IDS", "")
-    fallback = os.getenv("TELEGRAM_ADMIN_ID", "") or os.getenv("TELEGRAM_ADMIN_IDS", "")
+    """
+    Mantida em paridade com app/bot/bot.py — precisa reconhecer as MESMAS
+    variáveis de ambiente, senão a API rejeita ações de quem o bot considera admin.
+    """
+    candidates = [
+        "ADMIN_IDS",
+        "TELEGRAM_ADMIN_ID",
+        "TELEGRAM_ADMIN_IDS",
+        "ADMIN_CHAT_ID",
+        "TELEGRAM_CHAT_ID",
+    ]
+
     ids = []
-    for value in (raw, fallback):
-        for item in value.split(","):
-            candidate = item.strip()
-            if candidate:
-                ids.append(candidate)
+    for key in candidates:
+        ids.extend(normalize_admin_values(os.getenv(key, "")))
+
     return list(dict.fromkeys(ids))
 
 
 ADMIN_IDS = get_admin_ids()
+
 
 # ==============================
 # INIT DB
@@ -51,7 +61,6 @@ def init_db():
     try:
         logger.info("Inicializando banco de dados")
 
-        # garante carregamento do model
         from app.models.ticket import Ticket
 
         Base.metadata.create_all(bind=engine)
@@ -61,7 +70,8 @@ def init_db():
     except Exception:
         logger.exception("Erro ao inicializar banco de dados")
         raise
-    
+
+
 # ==============================
 # GERAR CÓDIGO
 # ==============================
@@ -109,7 +119,7 @@ def create_ticket_service(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             "created_at": ticket.created_at
         }, 201
 
-    except Exception as e:
+    except Exception:
         db.rollback()
         logger.exception("Erro ao criar ticket")
         return {"error": "erro interno"}, 500
@@ -146,7 +156,7 @@ def get_ticket_by_code(ticket_code):
             "admin_notes": ticket.admin_notes
         }, 200
 
-    except Exception as e:
+    except Exception:
         logger.exception("Erro ao buscar ticket")
         return {"error": "erro interno"}, 500
 
@@ -178,7 +188,7 @@ def list_tickets():
             } for t in tickets
         ]), 200
 
-    except Exception as e:
+    except Exception:
         logger.exception("Erro ao listar tickets")
         return {"error": "erro interno"}, 500
 
@@ -196,6 +206,7 @@ def close_ticket(ticket_id):
     admin_id = str(data.get("admin"))
 
     if admin_id not in ADMIN_IDS:
+        logger.warning(f"Tentativa de close negada para admin_id={admin_id} | ADMIN_IDS={ADMIN_IDS}")
         return {"error": "não autorizado"}, 403
 
     db = SessionLocal()
@@ -206,16 +217,17 @@ def close_ticket(ticket_id):
         if not ticket:
             return {"error": "not found"}, 404
 
-        ticket.status = "fechado"
+        ticket.status = "encerrado"
         ticket.closed_at = utcnow()
         ticket.closed_by = admin_id
-        ticket.admin_notes = data.get("notes")
+        if data.get("notes"):
+            ticket.admin_notes = data.get("notes")
 
         db.commit()
 
-        return {"status": "fechado"}, 200
+        return {"status": "encerrado"}, 200
 
-    except Exception as e:
+    except Exception:
         db.rollback()
         logger.exception("Erro ao fechar ticket")
         return {"error": "erro interno"}, 500
@@ -233,6 +245,7 @@ def update_ticket_status(ticket_id):
     admin_id = str(data.get("admin"))
 
     if admin_id not in ADMIN_IDS:
+        logger.warning(f"Tentativa de status negada para admin_id={admin_id} | ADMIN_IDS={ADMIN_IDS}")
         return {"error": "não autorizado"}, 403
 
     db = SessionLocal()
@@ -256,7 +269,7 @@ def update_ticket_status(ticket_id):
 
         return {"status": new_status}, 200
 
-    except Exception as e:
+    except Exception:
         db.rollback()
         logger.exception("Erro ao alterar status")
         return {"error": "erro interno"}, 500
@@ -275,6 +288,7 @@ def add_ticket_note(ticket_id):
     note = data.get("note")
 
     if admin_id not in ADMIN_IDS:
+        logger.warning(f"Tentativa de nota negada para admin_id={admin_id} | ADMIN_IDS={ADMIN_IDS}")
         return {"error": "não autorizado"}, 403
 
     if not note:
@@ -288,7 +302,6 @@ def add_ticket_note(ticket_id):
         if not ticket:
             return {"error": "not found"}, 404
 
-        # Adicionar à admin_notes existente
         existing_notes = ticket.admin_notes or ""
         if existing_notes:
             existing_notes += "\n"
@@ -298,7 +311,7 @@ def add_ticket_note(ticket_id):
 
         return {"message": "observação adicionada"}, 200
 
-    except Exception as e:
+    except Exception:
         db.rollback()
         logger.exception("Erro ao adicionar observação")
         return {"error": "erro interno"}, 500
