@@ -393,6 +393,11 @@ def buscar_ticket_por_id(ticket_id, request_func=None):
 
 
 def fechar_ticket(ticket_id, admin, request_func=None):
+    """
+    Fecha o ticket via API e retorna um dicionário com o resultado real
+    da operação (ok/status_code/body), para que quem chamar saiba se
+    a ação foi realmente autorizada/efetivada, em vez de assumir sucesso.
+    """
     request_func = request_func or requests.post
 
     try:
@@ -401,13 +406,22 @@ def fechar_ticket(ticket_id, admin, request_func=None):
             json={"admin": admin}
         )
 
+        status_code = getattr(response, "status_code", None)
+        body = None
         if response and hasattr(response, "json"):
-            return response.json()
+            try:
+                body = response.json()
+            except Exception:
+                body = None
 
-        return None
+        return {
+            "ok": status_code == 200,
+            "status_code": status_code,
+            "body": body,
+        }
 
     except Exception:
-        return None
+        return {"ok": False, "status_code": None, "body": None}
 
 
 # =========================
@@ -509,8 +523,13 @@ async def gerenciar_ticket_admin(update, context, text):
 
 
 async def alterar_status_ticket(update, context, ticket_id, status):
+    """
+    Agora mostra o status HTTP e a mensagem de erro retornada pela API
+    quando a alteração falha, em vez de só dizer "Erro ao alterar status."
+    Isso facilita diagnosticar problemas de autorização (403) ou
+    de status inválido (400) direto pelo Telegram.
+    """
     try:
-        # Assumindo que há um endpoint para alterar status
         response = requests.patch(
             f"{API_URL}/ticket/{ticket_id}/status",
             json={"status": status, "admin": get_user_id(update)}
@@ -525,9 +544,16 @@ async def alterar_status_ticket(update, context, ticket_id, status):
             # Recarregar ticket
             await consultar_ticket_admin(update, context, context.user_data["ticket_atual"]["code"])
         else:
-            await update.message.reply_text("Erro ao alterar status.")
-    except Exception:
-        await update.message.reply_text("Erro ao alterar status.")
+            erro_detalhe = ""
+            try:
+                erro_detalhe = response.json().get("error", "")
+            except Exception:
+                pass
+            await update.message.reply_text(
+                f"❌ Erro ao alterar status (HTTP {response.status_code}). {erro_detalhe}"
+            )
+    except Exception as e:
+        await update.message.reply_text(f"Erro ao alterar status: {e}")
 
 
 async def adicionar_observacao_admin(update, context, observacao):
@@ -537,7 +563,6 @@ async def adicionar_observacao_admin(update, context, observacao):
         return
 
     try:
-        # Assumindo endpoint para adicionar observação
         response = requests.post(
             f"{API_URL}/ticket/{ticket['id']}/note",
             json={"note": observacao, "admin": get_user_id(update)}
@@ -546,15 +571,27 @@ async def adicionar_observacao_admin(update, context, observacao):
             await update.message.reply_text("Observação adicionada.")
             await consultar_ticket_admin(update, context, ticket["code"])
         else:
-            await update.message.reply_text("Erro ao adicionar observação.")
-    except Exception:
-        await update.message.reply_text("Erro ao adicionar observação.")
+            erro_detalhe = ""
+            try:
+                erro_detalhe = response.json().get("error", "")
+            except Exception:
+                pass
+            await update.message.reply_text(
+                f"❌ Erro ao adicionar observação (HTTP {response.status_code}). {erro_detalhe}"
+            )
+    except Exception as e:
+        await update.message.reply_text(f"Erro ao adicionar observação: {e}")
 
 
 # =========================
 # NOTIFICAÇÃO
 # =========================
 def notificar_telegram(user, ticket_code, summary=None, request_func=None):
+    """
+    Notifica os admins sobre um novo chamado. Agora registra no log
+    (stdout, visível em `docker compose logs bot`) os principais passos
+    e qualquer falha, em vez de engolir silenciosamente as exceções.
+    """
     request_func = request_func or requests.post
 
     texto_resumo = summary or "Sem descrição adicional"
@@ -570,7 +607,14 @@ def notificar_telegram(user, ticket_code, summary=None, request_func=None):
         if admin_id and admin_id not in targets:
             targets.append(admin_id)
 
+    print(f"[BOT] notificar_telegram chamada | targets={targets} | TOKEN configurado={bool(TOKEN)}")
+
     if not targets:
+        print("[BOT] notificar_telegram: nenhum target encontrado, notificação não enviada.")
+        return None
+
+    if not TOKEN:
+        print("[BOT] notificar_telegram: TELEGRAM_TOKEN não configurado, notificação não enviada.")
         return None
 
     try:
@@ -588,12 +632,24 @@ def notificar_telegram(user, ticket_code, summary=None, request_func=None):
                 "text": text,
             }
             try:
-                request_func(url, json=payload, timeout=5)
+                resp = request_func(url, json=payload, timeout=5)
             except TypeError:
-                request_func(url, json=payload)
+                resp = request_func(url, json=payload)
+
+            status_code = getattr(resp, "status_code", "desconhecido")
+            print(f"[BOT] notificar_telegram: enviado para {target} | status={status_code}")
+
+            if hasattr(resp, "json"):
+                try:
+                    resp_body = resp.json()
+                    if not resp_body.get("ok", True):
+                        print(f"[BOT] notificar_telegram: Telegram retornou erro para {target}: {resp_body}")
+                except Exception:
+                    pass
 
         return True
-    except Exception:
+    except Exception as e:
+        print(f"[BOT] notificar_telegram: EXCEPTION: {e}")
         return None
 
 
@@ -601,6 +657,7 @@ def notificar_cliente_fechamento(ticket, request_func=None):
     request_func = request_func or requests.post
     chat_id = ticket.get("chat_id")
     if not chat_id:
+        print(f"[BOT] notificar_cliente_fechamento: ticket sem chat_id, notificação não enviada. ticket={ticket.get('code')}")
         return None
 
     try:
@@ -620,11 +677,16 @@ def notificar_cliente_fechamento(ticket, request_func=None):
             "text": text,
         }
         try:
-            request_func(url, json=payload, timeout=5)
+            resp = request_func(url, json=payload, timeout=5)
         except TypeError:
-            request_func(url, json=payload)
+            resp = request_func(url, json=payload)
+
+        status_code = getattr(resp, "status_code", "desconhecido")
+        print(f"[BOT] notificar_cliente_fechamento: enviado para {chat_id} | status={status_code}")
+
         return True
-    except Exception:
+    except Exception as e:
+        print(f"[BOT] notificar_cliente_fechamento: EXCEPTION: {e}")
         return None
 
 
@@ -807,11 +869,22 @@ def run_bot(token=None):
                 await update.message.reply_text("Ticket não encontrado.")
                 return
 
-        fechar_ticket(ticket_id, get_user_id(update))
+        resultado = fechar_ticket(ticket_id, get_user_id(update))
+
+        if not resultado.get("ok"):
+            erro_detalhe = ""
+            if resultado.get("body") and isinstance(resultado["body"], dict):
+                erro_detalhe = resultado["body"].get("error", "")
+            await update.message.reply_text(
+                f"❌ Erro ao encerrar ticket (HTTP {resultado.get('status_code')}). {erro_detalhe}\n"
+                "Verifique se seu ID está autorizado na API (variável ADMIN_IDS/TELEGRAM_CHAT_ID)."
+            )
+            return
+
         if ticket_data:
             notificar_cliente_fechamento(ticket_data)
 
-        await update.message.reply_text(f"Ticket {ticket_ref} encerrado.")
+        await update.message.reply_text(f"✅ Ticket {ticket_ref} encerrado.")
 
     async def encerrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await close(update, context)
