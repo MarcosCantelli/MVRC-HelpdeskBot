@@ -47,7 +47,13 @@ def test_erro_interno_em_list_tickets(client):
 
 
 def test_close_ticket_sucesso(client):
-    """Testa fechamento bem-sucedido de ticket"""
+    """
+    Testa fechamento bem-sucedido de ticket.
+
+    O status final do ticket passou de "fechado" para "encerrado",
+    para ficar consistente com o restante do sistema (bot, filtros
+    de listagem, etc., que sempre usaram "encerrado").
+    """
     with patch("app.api.app.SessionLocal") as mock_session, \
          patch("app.api.app.utcnow") as mock_utcnow, \
          patch("app.api.app.ADMIN_IDS", ["admin"]):
@@ -68,10 +74,10 @@ def test_close_ticket_sucesso(client):
 
         # Verificações
         assert resp.status_code == 200
-        assert resp.json["status"] == "fechado"
+        assert resp.json["status"] == "encerrado"
 
         # Verificar se os campos foram atualizados
-        assert mock_ticket.status == "fechado"
+        assert mock_ticket.status == "encerrado"
         assert mock_ticket.closed_at == "2024-01-01T00:00:00"
         assert mock_ticket.closed_by == "admin"
         assert mock_ticket.admin_notes == "Resolvido"
