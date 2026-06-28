@@ -23,7 +23,12 @@ class TestBotUtils:
             for name in handler.commands
         }
 
-        assert {"lista", "entrar", "encerrar", "fechar"}.issubset(commands)
+        # "/close" e "/fechar" foram removidos; "/encerrar" é o comando
+        # padronizado em português. "/all" substitui o antigo /listar
+        # restrito a admin.
+        assert {"lista", "entrar", "encerrar", "all"}.issubset(commands)
+        assert "fechar" not in commands
+        assert "close" not in commands
 
     def test_get_user_com_user(self):
         """Testa get_user quando update tem effective_user"""
@@ -219,18 +224,48 @@ class TestBotUtils:
 
     @patch("app.bot.bot.requests.post")
     def test_fechar_ticket_sucesso(self, mock_post):
-        """Testa fechar_ticket com sucesso"""
+        """
+        Testa fechar_ticket com sucesso.
+
+        A função agora retorna um dicionário {ok, status_code, body}
+        em vez do body puro, para que quem chamar saiba se a ação foi
+        realmente autorizada/efetivada pela API (em vez de assumir
+        sucesso sempre que a requisição não lançar exceção).
+        """
         mock_response = Mock()
-        mock_response.json.return_value = {"status": "fechado"}
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"status": "encerrado"}
         mock_post.return_value = mock_response
 
         result = fechar_ticket("1", "admin")
-        assert result == {"status": "fechado"}
+
+        assert result["ok"] is True
+        assert result["status_code"] == 200
+        assert result["body"] == {"status": "encerrado"}
+
+    @patch("app.bot.bot.requests.post")
+    def test_fechar_ticket_falha_autorizacao(self, mock_post):
+        """Testa fechar_ticket quando a API nega (HTTP 403)."""
+        mock_response = Mock()
+        mock_response.status_code = 403
+        mock_response.json.return_value = {"error": "não autorizado"}
+        mock_post.return_value = mock_response
+
+        result = fechar_ticket("1", "admin")
+
+        assert result["ok"] is False
+        assert result["status_code"] == 403
+        assert result["body"] == {"error": "não autorizado"}
 
     @patch("app.bot.bot.requests.post")
     def test_fechar_ticket_erro(self, mock_post):
-        """Testa fechar_ticket com erro"""
+        """
+        Testa fechar_ticket com erro de rede/exceção.
+
+        Em vez de retornar None, a função agora retorna um dicionário
+        de falha padronizado, consistente com o caso de sucesso.
+        """
         mock_post.side_effect = Exception("erro de rede")
 
         result = fechar_ticket("1", "admin")
-        assert result is None
+        assert result == {"ok": False, "status_code": None, "body": None}
