@@ -821,9 +821,14 @@ def run_bot(token=None):
     token = token or TOKEN
     app = ApplicationBuilder().token(token).build()
 
-    async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def voltar_ao_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Reaproveita a lógica do /start. Usada quando o fluxo termina
+        (step == 'finalizado') e o usuário toca em '🏠 Voltar ao início'
+        ou manda qualquer mensagem nesse ponto, evitando que o bot
+        fique 'travado' exigindo um /start manual.
+        """
         context.user_data.clear()
-
         user_name = get_user(update)
 
         if is_admin(update):
@@ -838,17 +843,17 @@ def run_bot(token=None):
             )
             await mostrar_menu_admin(update, context)
             return
-        else:
-            msg = (
-                f"Bem-vindo {user_name}! Sou o assistente do Helpdesk.\n\n"
-                "Descreva o problema que está acontecendo e eu tento ajudar rapidamente.\n"
-                "Ou use /listar para ver seus chamados já abertos."
-            )
-            await update.message.reply_text(
-                msg,
-                reply_markup=ReplyKeyboardRemove(),
-            )
-            context.user_data["step"] = "descricao"
+
+        msg = (
+            f"Bem-vindo {user_name}! Sou o assistente do Helpdesk.\n\n"
+            "Descreva o problema que está acontecendo e eu tento ajudar rapidamente.\n"
+            "Ou use /listar para ver seus chamados já abertos."
+        )
+        await update.message.reply_text(msg, reply_markup=ReplyKeyboardRemove())
+        context.user_data["step"] = "descricao"
+
+    async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await voltar_ao_inicio(update, context)
 
     async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_admin(update):
@@ -910,7 +915,6 @@ def run_bot(token=None):
     async def encerrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Comando único e padronizado em português para encerrar chamados.
-        Substitui os antigos /close e /fechar.
         """
         if not is_admin(update):
             await update.message.reply_text("❌ Acesso negado.")
@@ -979,6 +983,16 @@ def run_bot(token=None):
         step = context.user_data.get("step", "tipo")
 
         user = get_user(update)
+
+        # =========================
+        # FLUXO FINALIZADO
+        # =========================
+        # Quando o atendimento já terminou (sugestão entregue, chamado aberto
+        # ou problema resolvido), qualquer interação aqui reinicia o bot,
+        # em vez de ficar sem responder e exigir /start manual.
+        if step == "finalizado":
+            await voltar_ao_inicio(update, context)
+            return
 
         # =========================
         # FLUXO ADMIN
@@ -1068,11 +1082,7 @@ def run_bot(token=None):
                 ticket_code = text.replace("📄 Ver ", "").strip()
                 await consultar_ticket_usuario(update, context, ticket_code)
             elif "voltar" in text.lower():
-                await update.message.reply_text(
-                    "Ok! Digite /start para voltar ao início.",
-                    reply_markup=ReplyKeyboardRemove(),
-                )
-                context.user_data["step"] = None
+                await voltar_ao_inicio(update, context)
             return
 
         if step == "meu_ticket_detalhe":
@@ -1138,11 +1148,20 @@ def run_bot(token=None):
                     user,
                     context.user_data
                 )
+                keyboard = [["🏠 Voltar ao início"]]
+                await update.message.reply_text(
+                    "Quando precisar, é só tocar abaixo ou enviar uma mensagem.",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                )
                 context.user_data["step"] = "finalizado"
                 return
 
             if "sim" in text_lower or "funcionou" in text_lower or "resolvido" in text_lower:
-                await update.message.reply_text("✅ Ótimo! Fico feliz em ajudar.")
+                keyboard = [["🏠 Voltar ao início"]]
+                await update.message.reply_text(
+                    "✅ Ótimo! Fico feliz em ajudar.",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                )
                 context.user_data["step"] = "finalizado"
                 return
 
@@ -1151,6 +1170,11 @@ def run_bot(token=None):
                     update,
                     user,
                     context.user_data
+                )
+                keyboard = [["🏠 Voltar ao início"]]
+                await update.message.reply_text(
+                    "Quando precisar, é só tocar abaixo ou enviar uma mensagem.",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
                 )
                 context.user_data["step"] = "finalizado"
                 return
@@ -1180,10 +1204,10 @@ def run_bot(token=None):
 
         if step == "tentando_solucao":
             if "problema resolvido" in text.lower() or "resolvido" in text.lower():
+                keyboard = [["🏠 Voltar ao início"]]
                 await update.message.reply_text(
-                    "✅ Ótimo! Fico feliz que conseguimos resolver!\n\n"
-                    "Digite /start quando precisar de algo novamente.",
-                    reply_markup=ReplyKeyboardRemove(),
+                    "✅ Ótimo! Fico feliz que conseguimos resolver!",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
                 )
                 context.user_data["step"] = "finalizado"
                 return
@@ -1194,10 +1218,10 @@ def run_bot(token=None):
                     user,
                     context.user_data
                 )
+                keyboard = [["🏠 Voltar ao início"]]
                 await update.message.reply_text(
-                    "Entendido! Abrimos um chamado para nossa equipe analisar.\n\n"
-                    "Digite /start quando precisar de algo novamente.",
-                    reply_markup=ReplyKeyboardRemove(),
+                    "Entendido! Abrimos um chamado para nossa equipe analisar.",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
                 )
                 context.user_data["step"] = "finalizado"
                 return
